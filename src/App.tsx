@@ -975,9 +975,8 @@ export default function App() {
                     {currentTemplate.logoUrl ? (
                       <img src={currentTemplate.logoUrl} alt={currentTemplate.shortName} className="dock-bank-logo-img" />
                     ) : (
-                      <Building2 size={18} />
+                      <Building2 size={24} />
                     )}
-                    <span className="dock-pill-tag">{currentTemplate.shortName}</span>
                   </button>
 
                   <div className="dock-separator" />
