@@ -323,7 +323,7 @@ button {
 }
 
 .main-header {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .page-title {
@@ -1171,7 +1171,8 @@ button {
    BARRE D'ACTIONS INFÉRIEURE
    ========================================================================== */
 .app-action-bar {
-  margin-top: 20px;
+  margin-top: 0;
+  margin-bottom: 20px;
   background-color: var(--bg-panel);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);

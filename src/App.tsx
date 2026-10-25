@@ -566,6 +566,16 @@ export default function App() {
                 <p className="page-subtitle">Saisissez les informations du chèque et prévisualisez le résultat.</p>
               </div>
 
+              {/* Barre d'actions supérieure (Nouveau chèque, Enregistrer, Modifier, Imprimer) */}
+              <ActionBar
+                onNew={handleNewCheque}
+                onEdit={handleEditFocus}
+                onSave={handleSave}
+                onPrint={handlePrint}
+                activeStatus={activeChequeStatus}
+                printCount={activePrintCount}
+              />
+
               <div className="central-cards-grid">
                 {/* Carte de saisie */}
                 <CheckForm
@@ -604,16 +614,6 @@ export default function App() {
                   onChangeScale={setScale}
                 />
               </div>
-
-              {/* Barre d'actions inférieure (Imprimer le chèque, Enregistrer, Modifier) */}
-              <ActionBar
-                onNew={handleNewCheque}
-                onEdit={handleEditFocus}
-                onSave={handleSave}
-                onPrint={handlePrint}
-                activeStatus={activeChequeStatus}
-                printCount={activePrintCount}
-              />
 
               {/* Pied de page espace de travail (Footer) */}
               <footer className="workspace-main-footer">
