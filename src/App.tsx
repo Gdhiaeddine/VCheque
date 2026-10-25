@@ -15,6 +15,7 @@ import { defaultBankTemplates, defaultPositions } from "./banksData";
 import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, AppSettings, PrintAttemptRecord } from "./types";
 import { PrintModal, getPaperDimensions, calculateChequePosition } from "./components/PrintModal";
 import { PrintConfirmationModal } from "./components/PrintConfirmationModal";
+import { ExportPdfModal } from "./components/ExportPdfModal";
 import { SplashScreen } from "./components/SplashScreen";
 import { saveChequeRecord, findDuplicateCheque, autoRecordBeneficiary, logPrintAttempt, updatePrintAttemptStatus } from "./services/db";
 import { loadTemplatesFromConfigFile, saveTemplatesToConfigFile } from "./services/templatesConfig";
@@ -182,6 +183,9 @@ export default function App() {
 
   // Modal de confirmation de nouveau chèque si des modifications sont non enregistrées
   const [newChequeModalOpen, setNewChequeModalOpen] = useState<boolean>(false);
+
+  // Modal d'exportation PDF avec choix du format et options
+  const [isExportPdfModalOpen, setIsExportPdfModalOpen] = useState<boolean>(false);
 
   // 6. Feedback / Toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null);
@@ -462,7 +466,11 @@ export default function App() {
     executeSave();
   };
 
-  const handleExportPdf = (mode: "exact-cheque" | "sheet" = "exact-cheque") => {
+  const handleExportPdf = async (
+    mode: "exact-cheque" | "sheet" = "exact-cheque",
+    includeBackground: boolean = false,
+    customFilename?: string
+  ) => {
     const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
     if (isNaN(rawVal) || rawVal <= 0) {
       setToast({ message: "Veuillez saisir un montant valide avant d'exporter en PDF.", type: "warning" });
@@ -470,7 +478,7 @@ export default function App() {
     }
 
     try {
-      exportChequeToPdf({
+      const res = await exportChequeToPdf({
         mode,
         template: currentTemplate,
         amount,
@@ -481,10 +489,20 @@ export default function App() {
         date: date || new Date().toISOString().split("T")[0],
         isCrossed,
         crossedWithText,
-        printSettings
+        printSettings,
+        includeBackground,
+        filename: customFilename
       });
+
+      if (res.canceled) {
+        return;
+      }
+
+      const fileNameOnly = res.filePath ? res.filePath.split(/[\\/]/).pop() : null;
       setToast({
-        message: `Fichier PDF téléchargé avec succès (${mode === "sheet" ? "Mise en page feuille" : "Format chèque 1:1"}).`,
+        message: fileNameOnly
+          ? `PDF enregistré avec succès : ${fileNameOnly}`
+          : `Fichier PDF exporté avec succès (${mode === "sheet" ? "Mise en page feuille" : "Format chèque 1:1"}).`,
         type: "success"
       });
     } catch (err) {
@@ -877,7 +895,14 @@ export default function App() {
                 onEdit={handleEditFocus}
                 onSave={handleSave}
                 onPrint={handlePrint}
-                onExportPdf={() => handleExportPdf("exact-cheque")}
+                onExportPdf={() => {
+                  const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
+                  if (isNaN(rawVal) || rawVal <= 0) {
+                    setToast({ message: "Veuillez saisir un montant valide avant d'exporter en PDF.", type: "warning" });
+                    return;
+                  }
+                  setIsExportPdfModalOpen(true);
+                }}
                 activeStatus={activeChequeStatus}
                 printCount={activePrintCount}
               />
@@ -1087,6 +1112,19 @@ export default function App() {
         formattedNumeric={formattedNumeric}
         isReprint={activeChequeStatus === "printed" || activePrintCount > 0}
         printCount={activePrintCount}
+      />
+
+      {/* Modal d'Exportation PDF haute précision (Format chèque 1:1 ou Feuille A4, avec ou sans fond bancaire) */}
+      <ExportPdfModal
+        isOpen={isExportPdfModalOpen}
+        onClose={() => setIsExportPdfModalOpen(false)}
+        currentTemplate={currentTemplate}
+        amount={amount}
+        beneficiary={beneficiary}
+        date={date}
+        onConfirmExport={async ({ mode, includeBackground, filename }) => {
+          await handleExportPdf(mode, includeBackground, filename);
+        }}
       />
 
       {/* Modal d'Avertissement de Doublon (Meilleure pratique bancaire) */}

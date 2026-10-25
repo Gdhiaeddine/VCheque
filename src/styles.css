@@ -6323,3 +6323,133 @@ button {
   font-size: 11.5px;
   color: var(--text-secondary);
 }
+
+
+/* ==========================================================================
+   MODAL D'EXPORTATION PDF PROFESSIONNEL
+   ========================================================================== */
+
+.export-pdf-modal {
+  max-width: 580px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.export-pdf-section {
+  margin: 12px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-pdf-section-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-pdf-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .export-pdf-options-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.export-pdf-option-card {
+  padding: 12px 14px;
+  border: 1.5px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--bg-main, #f8fafc);
+  display: flex;
+  flex-direction: column;
+}
+
+.export-pdf-option-card:hover {
+  border-color: var(--gold-border, #d4af37);
+  background: #ffffff;
+}
+
+.export-pdf-option-card.selected {
+  border-color: var(--gold-primary, #b8860b);
+  background: rgba(184, 134, 11, 0.06);
+  box-shadow: 0 0 0 1px var(--gold-primary, #b8860b);
+}
+
+.option-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.option-card-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.option-card-icon {
+  color: var(--gold-primary, #b8860b);
+  flex-shrink: 0;
+}
+
+.option-card-check {
+  color: var(--gold-primary, #b8860b);
+  flex-shrink: 0;
+}
+
+.option-card-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.export-filename-input {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  font-family: var(--font-mono, monospace);
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 6px;
+  background: var(--bg-main, #f8fafc);
+}
+
+.export-filename-input:focus {
+  background: #ffffff;
+  border-color: var(--gold-primary, #b8860b);
+  outline: none;
+}
+
+.export-pdf-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-secondary, #f8fafc);
+  margin-top: 6px;
+}
+
+.btn-pdf-export {
+  border-color: rgba(184, 134, 11, 0.4);
+  background: linear-gradient(180deg, #ffffff 0%, #faf8f5 100%);
+}
+
+.btn-pdf-export:hover {
+  border-color: var(--gold-primary, #b8860b);
+  background: #fbf7ee;
+  color: var(--gold-dark, #8b6508);
+}
