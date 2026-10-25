@@ -89,10 +89,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         <div className="header-main-title-row">
           <div>
             <div className="title-with-badge">
-              <h1 className="settings-main-title">Paramètres & Préférences</h1>
-              <span className="settings-badge-auto">Enregistrement instantané</span>
+              <h1 className="history-main-title">Paramètres & Préférences</h1>
+              <span className="db-badge" title="Vos modifications sont enregistrées instantanément">
+                Enregistrement instantané
+              </span>
             </div>
-            <p className="settings-main-subtitle">
+            <p className="history-main-subtitle">
               Personnalisez le formatage des montants, la casse des lettres, les symboles de sécurité et vos valeurs par défaut.
             </p>
           </div>

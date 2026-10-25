@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   History,
   Search,
@@ -10,25 +10,35 @@ import {
   Clock,
   ArrowLeft,
   Building2,
-  Calendar,
-  MapPin,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  RotateCcw
+  RotateCcw,
+  FileDown,
+  AlertTriangle,
+  XCircle,
+  ShieldCheck,
+  X,
+  FileSpreadsheet
 } from "lucide-react";
-import type { ChequeRecord, ChequeStatus } from "../types";
-import { amountInFrenchWords } from "../moneyToWords";
+import type { ChequeRecord, ChequeStatus, BankTemplate, PrintAttemptRecord, PrintAttemptStatus } from "../types";
+import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
+import { exportChequeToPdf } from "../services/pdfExport";
+import { defaultBankTemplates } from "../banksData";
 import {
   getPaginatedCheques,
   deleteChequeRecord,
   clearAllChequeRecords,
+  getPrintAttempts,
+  deletePrintAttempt,
+  clearPrintLogs,
   type HistoryStats
 } from "../services/db";
 
 interface HistoryPageProps {
   history?: ChequeRecord[];
+  templates?: BankTemplate[];
   onCloneToHome: (record: ChequeRecord) => void;
   onReprintCheque: (record: ChequeRecord) => void;
   onDeleteRecord?: (id: string) => void;
@@ -38,6 +48,7 @@ interface HistoryPageProps {
 }
 
 export const HistoryPage: React.FC<HistoryPageProps> = ({
+  templates = defaultBankTemplates,
   onCloneToHome,
   onReprintCheque,
   onDeleteRecord,
@@ -65,6 +76,14 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     printedCount: 0,
     savedCount: 0
   });
+
+  // Mode de vue : Chèques émis vs Journal d'audit des impressions
+  const [activeView, setActiveView] = useState<"cheques" | "audit">("cheques");
+  const [printLogs, setPrintLogs] = useState<PrintAttemptRecord[]>([]);
+  const [selectedChequeForAudit, setSelectedChequeForAudit] = useState<ChequeRecord | null>(null);
+  const [chequeSpecificLogs, setChequeSpecificLogs] = useState<PrintAttemptRecord[]>([]);
+  const [auditStatusFilter, setAuditStatusFilter] = useState<"all" | PrintAttemptStatus>("all");
+  const [auditSearchQuery, setAuditSearchQuery] = useState<string>("");
 
   // Debounce search input (180ms pour éviter de spammer la base de données)
   useEffect(() => {
@@ -103,10 +122,71 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     }
   }, [currentPage, pageSize, debouncedSearch, statusFilter]);
 
+  const fetchPrintLogs = useCallback(async () => {
+    try {
+      const logs = await getPrintAttempts();
+      setPrintLogs(logs);
+    } catch (err) {
+      console.warn("Erreur chargement logs audit:", err);
+    }
+  }, []);
+
   // Déclencher le chargement
   useEffect(() => {
     fetchRecords();
-  }, [fetchRecords, refreshTrigger]);
+    fetchPrintLogs();
+  }, [fetchRecords, fetchPrintLogs, refreshTrigger]);
+
+  const handleOpenChequeAudit = async (cheque: ChequeRecord) => {
+    setSelectedChequeForAudit(cheque);
+    try {
+      const logs = await getPrintAttempts(cheque.id);
+      setChequeSpecificLogs(logs);
+    } catch {
+      setChequeSpecificLogs([]);
+    }
+  };
+
+  const handleDeleteAuditLog = async (id: string) => {
+    if (window.confirm("Supprimer définitivement cette trace du journal d'audit ?")) {
+      await deletePrintAttempt(id);
+      await fetchPrintLogs();
+      if (selectedChequeForAudit) {
+        const logs = await getPrintAttempts(selectedChequeForAudit.id);
+        setChequeSpecificLogs(logs);
+      }
+    }
+  };
+
+  const handleClearAuditLogs = async () => {
+    if (window.confirm("Supprimer l'ensemble du journal d'audit des tentatives d'impression ?")) {
+      await clearPrintLogs();
+      await fetchPrintLogs();
+      setChequeSpecificLogs([]);
+    }
+  };
+
+  const auditStats = useMemo(() => {
+    const total = printLogs.length;
+    const confirmed = printLogs.filter((l) => l.status === "confirmed").length;
+    const failed = printLogs.filter((l) => l.status === "failed" || l.status === "cancelled").length;
+    const requested = printLogs.filter((l) => l.status === "requested").length;
+    return { total, confirmed, failed, requested };
+  }, [printLogs]);
+
+  const filteredAuditLogs = useMemo(() => {
+    return printLogs.filter((log) => {
+      const matchesStatus = auditStatusFilter === "all" || log.status === auditStatusFilter;
+      const q = auditSearchQuery.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        log.beneficiary.toLowerCase().includes(q) ||
+        log.amount.includes(q) ||
+        log.bankName.toLowerCase().includes(q) ||
+        (log.failureReason && log.failureReason.toLowerCase().includes(q));
+      return matchesStatus && matchesSearch;
+    });
+  }, [printLogs, auditStatusFilter, auditSearchQuery]);
 
   // Suppression d'un chèque
   const handleDelete = async (id: string, beneficiary: string) => {
@@ -192,14 +272,20 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         <div className="header-main-title-row">
           <div>
             <div className="title-with-badge">
-              <h1 className="history-main-title">Historique des chèques</h1>
-              <span className="count-pill">{stats.totalCount}</span>
-              <span className="db-badge" title="Stockage optimisé SQLite / Indexé B-Tree">
-                SQLite 60 FPS
+              <h1 className="history-main-title">
+                {activeView === "cheques" ? "Historique des chèques" : "Journal d'audit des impressions"}
+              </h1>
+              <span className="count-pill">
+                {activeView === "cheques" ? stats.totalCount : printLogs.length}
+              </span>
+              <span className="db-badge" title="Stockage local SQLite">
+                SQLite
               </span>
             </div>
             <p className="history-main-subtitle">
-              Base de données haute performance avec pagination native. Vous pouvez réimprimer vos chèques ou les cloner pour modification vers l'accueil.
+              {activeView === "cheques"
+                ? "Chèques émis et enregistrés — réimpression, export PDF et modification via clonage."
+                : "Journal horodaté des impressions : lancements, confirmations et incidents."}
             </p>
           </div>
 
@@ -207,30 +293,67 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             <button
               type="button"
               className="btn-refresh-history"
-              onClick={() => fetchRecords()}
+              onClick={() => {
+                fetchRecords();
+                fetchPrintLogs();
+              }}
               title="Actualiser la liste"
             >
               <RotateCcw size={15} />
               <span>Actualiser</span>
             </button>
 
-            {stats.totalCount > 0 && (
+            {activeView === "cheques" && stats.totalCount > 0 && (
               <button
                 type="button"
                 className="btn-clear-history"
                 onClick={handleClearAll}
-                title="Vider l'historique"
+                title="Vider l'historique des chèques"
               >
                 <Trash2 size={15} />
                 <span>Vider l'historique</span>
               </button>
             )}
+
+            {activeView === "audit" && printLogs.length > 0 && (
+              <button
+                type="button"
+                className="btn-clear-history"
+                onClick={handleClearAuditLogs}
+                title="Vider le journal d'audit"
+              >
+                <Trash2 size={15} />
+                <span>Vider l'audit</span>
+              </button>
+            )}
           </div>
+        </div>
+
+        {/* Sélecteur de vue : Chèques vs Journal d'audit */}
+        <div className="history-view-tabs-container">
+          <button
+            type="button"
+            className={`view-tab-btn ${activeView === "cheques" ? "active" : ""}`}
+            onClick={() => setActiveView("cheques")}
+          >
+            <FileText size={15} />
+            <span>Chèques ({stats.totalCount})</span>
+          </button>
+          <button
+            type="button"
+            className={`view-tab-btn ${activeView === "audit" ? "active" : ""}`}
+            onClick={() => setActiveView("audit")}
+          >
+            <Printer size={15} />
+            <span>Journal d'impression ({printLogs.length})</span>
+          </button>
         </div>
       </div>
 
-      {/* 2. Cartes statistiques */}
-      <div className="history-stats-grid">
+      {activeView === "cheques" ? (
+        <>
+          {/* 2. Cartes statistiques */}
+          <div className="history-stats-grid">
         <div className="history-stat-card">
           <div className="stat-icon-wrapper gold">
             <FileText size={18} />
@@ -332,7 +455,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
           </h3>
           <p className="empty-description">
             {stats.totalCount === 0
-              ? "Vos chèques imprimés et enregistrés depuis l'accueil apparaîtront ici automatiquement avec persistance SQLite."
+              ? "Vos chèques imprimés et enregistrés apparaîtront ici automatiquement."
               : "Essayez de modifier votre mot-clé de recherche ou de réinitialiser les filtres."}
           </p>
           {stats.totalCount === 0 ? (
@@ -355,7 +478,20 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         </div>
       ) : (
         <div className="history-content-with-pagination">
-          <div className="history-list-grid">
+          <div className="history-table-card">
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th className="ht-col-status">Statut</th>
+                  <th>Bénéficiaire</th>
+                  <th className="ht-col-amount">Montant</th>
+                  <th className="ht-col-number">N° chèque</th>
+                  <th>Date</th>
+                  <th>Banque</th>
+                  <th className="ht-col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
             {records.map((item) => {
               const numAmount = Number((item.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
               const formattedNum = numAmount.toLocaleString("fr-FR", {
@@ -363,133 +499,138 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                 maximumFractionDigits: 2
               });
               const wordsPreview = amountInFrenchWords(item.amount);
+              const timestampLabel =
+                item.status === "printed" && item.printedAt
+                  ? `Imprimé le ${formatTimestamp(item.printedAt)}`
+                  : `Enregistré le ${formatTimestamp(item.createdAt)}`;
+              const barcodeToken = item.crossedWithText !== false ? "// Barré" : "// Barré simple";
 
               return (
-                <div key={item.id} className="history-cheque-card">
-                  {/* Ligne haute : Statut, Banque et Horodatage */}
-                  <div className="cheque-card-top">
-                    <div className="cheque-meta-left">
-                      <span className={`cheque-status-tag ${item.status}`}>
-                        {item.status === "printed" ? (
-                          <>
-                            <CheckCircle2 size={13} />
-                            <span>Imprimé {item.printCount && item.printCount > 1 ? `(x${item.printCount})` : ""}</span>
-                          </>
-                        ) : (
-                          <>
-                            <Clock size={13} />
-                            <span>Enregistré</span>
-                          </>
-                        )}
-                      </span>
-
-                      <span className="cheque-bank-badge">
-                        <Building2 size={13} />
-                        <span>{item.bankName}</span>
-                      </span>
-
-                      {item.isCrossed !== false && (
-                        <span
-                          className="cheque-barre-badge"
-                          title={item.crossedWithText !== false ? "Chèque barré — Non endossable" : "Chèque barré simple (sans mention)"}
-                        >
-                          {item.crossedWithText !== false ? "// Barré (Non endossable)" : "// Barré simple"}
-                        </span>
+                <tr key={item.id}>
+                  <td className="ht-col-status">
+                    <span className={`cheque-status-tag ${item.status}`}>
+                      {item.status === "printed" ? (
+                        <>
+                          <CheckCircle2 size={13} />
+                          <span>Imprimé{item.printCount && item.printCount > 1 ? ` (x${item.printCount})` : ""}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={13} />
+                          <span>Enregistré</span>
+                        </>
                       )}
-                    </div>
-
-                    <span className="cheque-timestamp" title="Horodatage">
-                      {item.status === "printed" && item.printedAt
-                        ? `Imprimé le ${formatTimestamp(item.printedAt)}`
-                        : `Enregistré le ${formatTimestamp(item.createdAt)}`}
                     </span>
-                  </div>
+                  </td>
 
-                  {/* Corps de la carte : Bénéficiaire et Montant */}
-                  <div className="cheque-card-body">
-                    <div className="cheque-main-info">
-                      <div className="cheque-beneficiary-group">
-                        <span className="info-label">À l'ordre de :</span>
-                        <strong className="info-beneficiary">
-                          {item.beneficiary || "Bénéficiaire non renseigné"}
-                        </strong>
-                      </div>
+                  <td className="ht-col-beneficiary">
+                    <span
+                      className="ht-beneficiary"
+                      title={`À l'ordre de : ${item.beneficiary || "Bénéficiaire non renseigné"}\nMontant en lettres : ${wordsPreview}`}
+                    >
+                      {item.beneficiary || "Bénéficiaire non renseigné"}
+                    </span>
+                  </td>
 
-                      <div className="cheque-amount-group">
-                        <span className="info-label">Montant en chiffres :</span>
-                        <strong className="info-amount-numeric"># {formattedNum} DA #</strong>
-                      </div>
-                    </div>
+                  <td className="ht-col-amount">
+                    <span className="ht-amount" title={`Montant en lettres : ${wordsPreview}`}>
+                      {formattedNum} DA
+                    </span>
+                  </td>
 
-                    {/* Montant en lettres */}
-                    <div className="cheque-words-preview">
-                      <span className="info-label">Montant en lettres :</span>
-                      <p className="words-text">{wordsPreview}</p>
-                    </div>
+                  <td className="ht-col-number">
+                    <span className="ht-number">{item.chequeNumber || "—"}</span>
+                    {item.isCrossed !== false && (
+                      <span
+                        className="ht-crossed"
+                        title={item.crossedWithText !== false ? "Chèque barré — Non endossable" : "Chèque barré simple (sans mention)"}
+                      >
+                        {barcodeToken}
+                      </span>
+                    )}
+                  </td>
 
-                    {/* Lieu et Date */}
-                    <div className="cheque-location-row">
-                      <div className="loc-item">
-                        <MapPin size={13} className="loc-icon" />
-                        <span>
-                          Fait à : <strong>{item.place || "—"}</strong>
-                        </span>
-                      </div>
+                  <td className="ht-col-date" title={timestampLabel}>
+                    <span className="ht-date-main">{formatDate(item.date)}</span>
+                    {item.place && <span className="ht-date-sub">Fait à {item.place}</span>}
+                  </td>
 
-                      <div className="loc-item">
-                        <Calendar size={13} className="loc-icon" />
-                        <span>
-                          Le : <strong>{formatDate(item.date)}</strong>
-                        </span>
-                      </div>
+                  <td className="ht-col-bank">
+                    <span className="ht-bank" title={item.bankName}>
+                      <Building2 size={13} />
+                      <span>{item.bankName}</span>
+                    </span>
+                  </td>
 
-                      {item.chequeNumber && (
-                        <div className="loc-item">
-                          <FileText size={13} className="loc-icon" />
-                          <span>
-                            N° : <strong>{item.chequeNumber}</strong>
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Barre d'actions */}
-                  <div className="cheque-card-footer">
-                    <div className="footer-actions-left">
+                  <td className="ht-col-actions">
+                    <div className="ht-actions">
                       <button
                         type="button"
-                        className="btn-history-action clone"
+                        className="ht-act audit"
+                        onClick={() => handleOpenChequeAudit(item)}
+                        title="Consulter les tentatives et traces d'impression de ce chèque"
+                      >
+                        <ShieldCheck size={14} />
+                      </button>
+
+                      <button
+                        type="button"
+                        className="ht-act"
                         onClick={() => onCloneToHome(item)}
                         title="Charger les données de ce chèque dans l'accueil pour le modifier"
                       >
                         <Edit3 size={14} />
-                        <span>Modifier (Cloner vers l'accueil)</span>
                       </button>
 
                       <button
                         type="button"
-                        className="btn-history-action reprint"
+                        className="ht-act reprint"
                         onClick={() => onReprintCheque(item)}
                         title="Ouvrir la disposition et imprimer ce chèque"
                       >
                         <Printer size={14} />
-                        <span>Réimprimer</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="ht-act pdf"
+                        onClick={() => {
+                          const tpl = templates?.find((t) => t.id === item.bankTemplateId) || defaultBankTemplates[0];
+                          const words = amountInFrenchWords(item.amount);
+                          const formattedNumeric = formatNumericAmount(item.amount);
+                          exportChequeToPdf({
+                            mode: "exact-cheque",
+                            template: tpl,
+                            amount: item.amount,
+                            formattedNumeric,
+                            words,
+                            beneficiary: item.beneficiary,
+                            place: item.place,
+                            date: item.date,
+                            isCrossed: item.isCrossed !== false,
+                            crossedWithText: item.crossedWithText !== false
+                          });
+                        }}
+                        title="Exporter directement ce chèque en PDF vectoriel"
+                      >
+                        <FileDown size={14} />
+                      </button>
+
+                      <button
+                        type="button"
+                        className="ht-act delete"
+                        onClick={() => handleDelete(item.id, item.beneficiary)}
+                        title="Supprimer de l'historique"
+                      >
+                        <Trash2 size={14} />
                       </button>
                     </div>
-
-                    <button
-                      type="button"
-                      className="btn-history-delete"
-                      onClick={() => handleDelete(item.id, item.beneficiary)}
-                      title="Supprimer de l'historique"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
+                  </td>
+                </tr>
               );
             })}
+              </tbody>
+            </table>
           </div>
 
           {/* 5. Barre de pagination SQLite */}
@@ -573,6 +714,276 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+        </>
+      ) : (
+        /* ==========================================================================
+           VUE 2 : JOURNAL D'AUDIT COMPLET DES TENTATIVES D'IMPRESSION
+           ========================================================================== */
+        <div className="audit-view-container">
+          {/* Cartes statistiques audit */}
+          <div className="history-stats-grid">
+            <div className="history-stat-card">
+              <div className="stat-icon-wrapper gold">
+                <Printer size={18} />
+              </div>
+              <div className="stat-content">
+                <span className="stat-label">Total des tentatives</span>
+                <strong className="stat-value">{auditStats.total}</strong>
+              </div>
+            </div>
+
+            <div className="history-stat-card">
+              <div className="stat-icon-wrapper green">
+                <CheckCircle2 size={18} />
+              </div>
+              <div className="stat-content">
+                <span className="stat-label">Sorties physiques confirmées</span>
+                <strong className="stat-value">{auditStats.confirmed}</strong>
+              </div>
+            </div>
+
+            <div className="history-stat-card">
+              <div className="stat-icon-wrapper red">
+                <AlertTriangle size={18} />
+              </div>
+              <div className="stat-content">
+                <span className="stat-label">Incidents & Annulations</span>
+                <strong className="stat-value">{auditStats.failed}</strong>
+              </div>
+            </div>
+
+            <div className="history-stat-card">
+              <div className="stat-icon-wrapper blue">
+                <Clock size={18} />
+              </div>
+              <div className="stat-content">
+                <span className="stat-label">En attente de validation</span>
+                <strong className="stat-value">{auditStats.requested}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Barre de recherche et filtres de statut audit */}
+          <div className="history-toolbar-card">
+            <div className="history-search-box">
+              <Search size={16} className="history-search-icon" />
+              <input
+                type="text"
+                className="history-search-input"
+                placeholder="Rechercher par bénéficiaire, banque, montant ou motif d'incident..."
+                value={auditSearchQuery}
+                onChange={(e) => setAuditSearchQuery(e.target.value)}
+              />
+              {auditSearchQuery && (
+                <button
+                  type="button"
+                  className="search-clear-btn"
+                  onClick={() => setAuditSearchQuery("")}
+                >
+                  Effacer
+                </button>
+              )}
+            </div>
+
+            <div className="history-filter-pills">
+              <button
+                type="button"
+                className={`filter-pill ${auditStatusFilter === "all" ? "active" : ""}`}
+                onClick={() => setAuditStatusFilter("all")}
+              >
+                Tous ({auditStats.total})
+              </button>
+              <button
+                type="button"
+                className={`filter-pill ${auditStatusFilter === "confirmed" ? "active" : ""}`}
+                onClick={() => setAuditStatusFilter("confirmed")}
+              >
+                Confirmés ({auditStats.confirmed})
+              </button>
+              <button
+                type="button"
+                className={`filter-pill ${auditStatusFilter === "failed" ? "active" : ""}`}
+                onClick={() => setAuditStatusFilter("failed")}
+              >
+                Incidents ({auditStats.failed})
+              </button>
+              <button
+                type="button"
+                className={`filter-pill ${auditStatusFilter === "requested" ? "active" : ""}`}
+                onClick={() => setAuditStatusFilter("requested")}
+              >
+                En attente ({auditStats.requested})
+              </button>
+            </div>
+          </div>
+
+          {/* Liste des journaux d'audit */}
+          {filteredAuditLogs.length === 0 ? (
+            <div className="history-empty-state">
+              <div className="empty-icon-circle">
+                <Printer size={32} />
+              </div>
+              <h3 className="empty-title">Aucune trace d'impression</h3>
+              <p className="empty-description">
+                Toutes les tentatives d'impression et réimpressions seront automatiquement tracées ici avec leur résultat physique et motif d'incident le cas échéant.
+              </p>
+            </div>
+          ) : (
+            <div className="audit-logs-table-card">
+              <table className="audit-table">
+                <thead>
+                  <tr>
+                    <th>Date & Heure</th>
+                    <th>Bénéficiaire</th>
+                    <th>Montant</th>
+                    <th>Banque</th>
+                    <th>Tirage</th>
+                    <th>Format / Emplacement</th>
+                    <th>Résultat physique</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAuditLogs.map((log) => (
+                    <tr key={log.id} className={`audit-row ${log.status}`}>
+                      <td className="audit-col-date">
+                        <span className="audit-date-txt">{formatTimestamp(log.attemptedAt)}</span>
+                      </td>
+                      <td className="audit-col-beneficiary">
+                        <strong>{log.beneficiary}</strong>
+                      </td>
+                      <td className="audit-col-amount">
+                        <span className="audit-amount-pill">{log.amount} DZD</span>
+                      </td>
+                      <td className="audit-col-bank">{log.bankName}</td>
+                      <td className="audit-col-copy">
+                        <span className="copy-pill">
+                          {log.copyNumber > 1 ? `Copie N°${log.copyNumber}` : "1er tirage"}
+                        </span>
+                      </td>
+                      <td className="audit-col-format">
+                        <span className="format-txt">{log.paperFormat || "A4"} ({log.placement || "Centre"})</span>
+                      </td>
+                      <td className="audit-col-status">
+                        {log.status === "confirmed" ? (
+                          <span className="audit-badge confirmed">
+                            <CheckCircle2 size={13} />
+                            <span>Confirmé</span>
+                          </span>
+                        ) : log.status === "failed" ? (
+                          <div className="audit-incident-block">
+                            <span className="audit-badge failed">
+                              <AlertTriangle size={13} />
+                              <span>Incident</span>
+                            </span>
+                            {log.failureReason && (
+                              <span className="incident-reason-tag" title={log.failureReason}>
+                                {log.failureReason}
+                              </span>
+                            )}
+                          </div>
+                        ) : log.status === "cancelled" ? (
+                          <span className="audit-badge cancelled">
+                            <XCircle size={13} />
+                            <span>Annulé</span>
+                          </span>
+                        ) : (
+                          <span className="audit-badge requested">
+                            <Clock size={13} />
+                            <span>Demandé</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="audit-col-actions">
+                        <button
+                          type="button"
+                          className="btn-audit-row-delete"
+                          onClick={() => handleDeleteAuditLog(log.id)}
+                          title="Supprimer cette ligne du journal"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal d'audit spécifique pour un chèque donné */}
+      {selectedChequeForAudit && (
+        <div className="print-confirm-overlay" role="dialog" aria-modal="true" onClick={() => setSelectedChequeForAudit(null)}>
+          <div className="print-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="print-confirm-header">
+              <div className="print-confirm-icon-box">
+                <ShieldCheck size={22} className="confirm-icon text-gold" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 className="confirm-title">Journal d'audit du chèque</h3>
+                <p className="confirm-subtitle">
+                  {selectedChequeForAudit.beneficiary} — {selectedChequeForAudit.amount} DZD ({selectedChequeForAudit.bankName})
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-modal-close"
+                onClick={() => setSelectedChequeForAudit(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="cheque-audit-modal-body">
+              {chequeSpecificLogs.length === 0 ? (
+                <p className="audit-empty-modal-text">
+                  Aucune trace d'impression consignée pour ce chèque.
+                </p>
+              ) : (
+                <div className="cheque-audit-timeline">
+                  {chequeSpecificLogs.map((log) => (
+                    <div key={log.id} className={`audit-timeline-item ${log.status}`}>
+                      <div className="timeline-marker" />
+                      <div className="timeline-content">
+                        <div className="timeline-header">
+                          <strong className="timeline-title">
+                            {log.copyNumber > 1 ? `Réimpression (Tirage N°${log.copyNumber})` : "Premier tirage"}
+                          </strong>
+                          <span className="timeline-time">{formatTimestamp(log.attemptedAt)}</span>
+                        </div>
+                        <div className="timeline-badge-row">
+                          <span className={`audit-badge ${log.status}`}>
+                            {log.status === "confirmed"
+                              ? "Sortie physique confirmée"
+                              : log.status === "failed"
+                              ? `Incident : ${log.failureReason || "Erreur"}`
+                              : "Demandé (En attente)"}
+                          </span>
+                          <span className="timeline-format">
+                            {log.paperFormat || "A4"} · {log.placement || "Centre"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="print-confirm-actions" style={{ justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn-modal-secondary"
+                onClick={() => setSelectedChequeForAudit(null)}
+              >
+                Fermer
+              </button>
+            </div>
           </div>
         </div>
       )}

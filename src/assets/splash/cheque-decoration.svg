@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 380" fill="none">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#ECE8D8"/>
+      <stop offset="0.55" stop-color="#DFDBC7"/>
+      <stop offset="1" stop-color="#CBC6AF"/>
+    </linearGradient>
+    <linearGradient id="sheenG" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#C49A4A" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="foilG" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E4C77D"/>
+      <stop offset="1" stop-color="#8C682C"/>
+    </linearGradient>
+    <linearGradient id="penBodyG" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#123D31"/>
+      <stop offset="0.5" stop-color="#1B4A3A"/>
+      <stop offset="1" stop-color="#082820"/>
+    </linearGradient>
+    <pattern id="microgrid" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <path d="M0 3.5 H7" stroke="#8C682C" stroke-width="0.4" stroke-opacity="0.14"/>
+    </pattern>
+  </defs>
+
+  <!-- cast shadow -->
+  <rect x="36" y="60" width="706" height="272" rx="10" fill="#03110D" opacity="0.4"/>
+
+  <!-- cheque body -->
+  <rect x="24" y="46" width="706" height="272" rx="10" fill="url(#paper)"/>
+  <rect x="24" y="46" width="706" height="272" rx="10" fill="url(#microgrid)"/>
+  <rect x="24" y="46" width="706" height="272" rx="10" fill="url(#sheenG)"/>
+  <rect x="24" y="46" width="706" height="272" rx="10" stroke="#A79F84" stroke-opacity="0.66"/>
+
+  <!-- watermark -->
+  <g stroke="#6F7F6E" opacity="0.09">
+    <circle cx="380" cy="190" r="52"/>
+    <circle cx="380" cy="190" r="78"/>
+    <circle cx="380" cy="190" r="104"/>
+    <circle cx="380" cy="190" r="130"/>
+  </g>
+
+  <!-- ornamental frames -->
+  <rect x="38" y="60" width="678" height="244" rx="6" stroke="#C49A4A" stroke-opacity="0.38"/>
+  <rect x="44" y="66" width="666" height="232" rx="4" stroke="#C49A4A" stroke-opacity="0.18"/>
+
+  <!-- corner rosettes -->
+  <g stroke="#8C682C" stroke-opacity="0.42">
+    <g transform="translate(38 60)">
+      <path d="M0 14 A14 14 0 0 1 14 0"/>
+      <path d="M0 8 A8 8 0 0 1 8 0"/>
+    </g>
+    <g transform="translate(716 60) scale(-1 1)">
+      <path d="M0 14 A14 14 0 0 1 14 0"/>
+      <path d="M0 8 A8 8 0 0 1 8 0"/>
+    </g>
+    <g transform="translate(38 304) scale(1 -1)">
+      <path d="M0 14 A14 14 0 0 1 14 0"/>
+      <path d="M0 8 A8 8 0 0 1 8 0"/>
+    </g>
+    <g transform="translate(716 304) scale(-1 -1)">
+      <path d="M0 14 A14 14 0 0 1 14 0"/>
+      <path d="M0 8 A8 8 0 0 1 8 0"/>
+    </g>
+  </g>
+
+  <!-- crossed bars (cheque barré) -->
+  <g stroke="#3F4A3C" stroke-opacity="0.5" stroke-width="2.2">
+    <line x1="62" y1="70" x2="186" y2="86"/>
+    <line x1="62" y1="80" x2="186" y2="96"/>
+  </g>
+
+  <!-- header -->
+  <text x="206" y="94" font-family="Georgia, 'Times New Roman', serif" font-size="13.5" letter-spacing="3.5" fill="#6E5629" font-weight="600">BANQUE</text>
+  <line x1="298" y1="90" x2="520" y2="90" stroke="#6E5629" stroke-opacity="0.4"/>
+
+  <!-- currency and numeric boxes -->
+  <rect x="560" y="72" width="148" height="42" rx="4" stroke="#3F4A3C" stroke-opacity="0.55"/>
+  <rect x="560" y="122" width="148" height="38" rx="4" stroke="#3F4A3C" stroke-opacity="0.55"/>
+  <text x="634" y="98" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" letter-spacing="2" fill="#3F4A3C" opacity="0.85">DA</text>
+  <line x1="572" y1="141" x2="700" y2="141" stroke="#3F4A3C" stroke-opacity="0.35"/>
+
+  <!-- field labels and ruled lines -->
+  <text x="66" y="146" font-family="Georgia, 'Times New Roman', serif" font-size="11" letter-spacing="1" fill="#3F4A3C" opacity="0.85">Payez à l'ordre de</text>
+  <line x1="66" y1="170" x2="528" y2="170" stroke="#3F4A3C" stroke-opacity="0.5"/>
+  <text x="66" y="212" font-family="Georgia, 'Times New Roman', serif" font-size="11" letter-spacing="1" fill="#3F4A3C" opacity="0.85">Montant en lettres</text>
+  <line x1="66" y1="236" x2="528" y2="236" stroke="#3F4A3C" stroke-opacity="0.5"/>
+
+  <text x="560" y="180" font-family="Georgia, 'Times New Roman', serif" font-size="11" fill="#3F4A3C" opacity="0.85">À</text>
+  <line x1="580" y1="176" x2="708" y2="176" stroke="#3F4A3C" stroke-opacity="0.5"/>
+  <text x="560" y="220" font-family="Georgia, 'Times New Roman', serif" font-size="11" fill="#3F4A3C" opacity="0.85">le</text>
+  <line x1="580" y1="216" x2="708" y2="216" stroke="#3F4A3C" stroke-opacity="0.5"/>
+
+  <!-- MICR strip (decorative blocks, no digits) -->
+  <line x1="62" y1="304" x2="318" y2="304" stroke="#3F4A3C" stroke-width="16" stroke-dasharray="9 12" opacity="0.32"/>
+  <line x1="472" y1="304" x2="676" y2="304" stroke="#3F4A3C" stroke-width="16" stroke-dasharray="9 12" opacity="0.32"/>
+
+  <!-- pen -->
+  <g transform="translate(586 150) rotate(50)">
+    <rect x="-7.5" y="0" width="15" height="9" rx="4.5" fill="url(#foilG)"/>
+    <rect x="-7.5" y="9" width="15" height="3" fill="#082820"/>
+    <rect x="-7" y="12" width="14" height="168" rx="7" fill="url(#penBodyG)"/>
+    <rect x="3.6" y="16" width="3" height="58" rx="1.5" fill="url(#foilG)" opacity="0.85"/>
+    <rect x="-7" y="156" width="14" height="5" fill="url(#foilG)" opacity="0.9"/>
+    <path d="M-7 180 L-2.4 194 L-2.4 218 L2.4 218 L2.4 194 L7 180 Z" fill="url(#penBodyG)"/>
+    <path d="M-2.4 218 L0 232 L2.4 218 Z" fill="url(#foilG)"/>
+  </g>
+</svg>

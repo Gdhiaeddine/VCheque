@@ -1,14 +1,17 @@
 import React from "react";
 import {
-  FileText,
-  Building2,
+  House,
+  Landmark,
   History,
+  Users,
   Settings,
   PanelLeftClose,
   PanelLeftOpen
 } from "lucide-react";
+import maqamEchahidSvg from "../assets/maqam-echahid.svg";
+import sidebarOrnamentsSvg from "../assets/sidebar-ornaments.svg";
 
-export type NavTab = "home" | "templates" | "history" | "settings";
+export type NavTab = "home" | "templates" | "history" | "beneficiaries" | "settings";
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -24,14 +27,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse
 }) => {
   const navItems = [
-    { id: "home" as NavTab, label: "Accueil", icon: FileText },
-    { id: "templates" as NavTab, label: "Modèles bancaires", icon: Building2 },
+    { id: "home" as NavTab, label: "Accueil", icon: House },
+    { id: "templates" as NavTab, label: "Modèles bancaires", icon: Landmark },
     { id: "history" as NavTab, label: "Historique", icon: History },
+    { id: "beneficiaries" as NavTab, label: "Bénéficiaires", icon: Users },
     { id: "settings" as NavTab, label: "Paramètres", icon: Settings }
   ];
 
   return (
-    <aside className={`app-sidebar ${isCollapsed ? "collapsed" : ""}`}>
+    <aside
+      className={`app-sidebar ${isCollapsed ? "collapsed" : ""}`}
+      aria-label="Navigation latérale"
+    >
+      {/* =========================================================================
+          COUCHES D'ARRIÈRE-PLAN DÉCORATIVES (Atmosphère algérienne prestigieuse)
+          ========================================================================= */}
+      <div className="sidebar-bg-layers" aria-hidden="true">
+        {/* Lueur émeraude subtile */}
+        <div className="sidebar-emerald-glow" />
+
+        {/* Ornements géométriques or */}
+        <img
+          src={sidebarOrnamentsSvg}
+          alt=""
+          className="sidebar-ornaments-img"
+        />
+
+        {/* Illustration architecturale Maqam Echahid */}
+        <img
+          src={maqamEchahidSvg}
+          alt=""
+          className="sidebar-monument-img"
+        />
+
+        {/* Signature élégante Algérie (visible en mode étendu) */}
+        {!isCollapsed && (
+          <div className="sidebar-signature">
+            <span>Algérie</span>
+          </div>
+        )}
+      </div>
+
+      {/* =========================================================================
+          CONTENU INTERACTIF AU PREMIER PLAN
+          ========================================================================= */}
+      {/* 1. Ligne de contrôle de navigation (en haut) */}
       {onToggleCollapse && (
         <div className="sidebar-collapse-row">
           {!isCollapsed && <span className="sidebar-section-title">Navigation</span>}
@@ -42,11 +82,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             title={isCollapsed ? "Développer le menu (icônes + texte)" : "Réduire le menu (icônes seules)"}
             aria-label={isCollapsed ? "Développer le menu" : "Réduire le menu"}
           >
-            {isCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
         </div>
       )}
 
+      {/* 2. Liste de navigation */}
       <nav className="sidebar-nav" aria-label="Navigation principale">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -60,37 +101,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
               title={isCollapsed ? item.label : undefined}
               aria-label={item.label}
             >
-              <Icon size={18} className="nav-icon" />
+              <Icon size={19} className="nav-icon" />
               {!isCollapsed && <span className="nav-label">{item.label}</span>}
             </button>
           );
         })}
       </nav>
 
+      {/* 3. Pied de page discret */}
       <div className="sidebar-footer">
-        {/* Motif discret */}
-        <div className="algeria-emblem" aria-hidden="true">
-          <svg
-            viewBox="0 0 60 20"
-            width={isCollapsed ? "34" : "48"}
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1"
-            strokeLinecap="round"
-            opacity="0.45"
-          >
-            <path d="M5 18 L15 6 L25 18 Z" />
-            <path d="M22 18 L30 3 L38 18 Z" />
-            <path d="M35 18 L45 6 L55 18 Z" />
-            <circle cx="30" cy="8" r="1.5" />
-          </svg>
-        </div>
-        {!isCollapsed && (
-          <>
-            <div className="footer-country">Algérie</div>
-            <div className="footer-version">v0.1.0 · Desktop Edition</div>
-          </>
+        <div className="sidebar-footer-gold-line" />
+        {!isCollapsed ? (
+          <div className="sidebar-footer-content">
+            <div className="sidebar-footer-version">v0.1.0 · Desktop Edition</div>
+          </div>
+        ) : (
+          <div className="sidebar-footer-collapsed-dot" title="v0.1.0" />
         )}
       </div>
     </aside>

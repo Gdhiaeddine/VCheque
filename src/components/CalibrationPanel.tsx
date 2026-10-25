@@ -4,8 +4,8 @@ import type { BankTemplate, FieldKey } from "../types";
 
 interface CalibrationPanelProps {
   currentTemplate: BankTemplate;
-  activeField: FieldKey;
-  onSelectField: (key: FieldKey) => void;
+  activeField: FieldKey | null;
+  onSelectField: (key: FieldKey | null) => void;
   onUpdatePosition: (key: FieldKey, patch: { x?: number; y?: number; size?: number }) => void;
   onResetPositions: () => void;
   showGuides: boolean;
@@ -39,20 +39,24 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
 }) => {
   const [unit, setUnit] = useState<"mm" | "px">("mm");
 
-  const currentPos = currentTemplate.positions[activeField];
+  const selectedFieldKey: FieldKey = activeField || "beneficiary";
+  const currentPos = currentTemplate.positions[selectedFieldKey];
   const factor = unit === "px" ? 3.78 : 1; // 1mm ~= 3.78px at 96 DPI
 
   const xVal = Number((currentPos.x * factor).toFixed(1));
   const yVal = Number((currentPos.y * factor).toFixed(1));
 
   const handleStep = (axis: "x" | "y", delta: number) => {
+    if (!activeField) {
+      onSelectField(selectedFieldKey);
+    }
     const deltaMm = unit === "px" ? delta / 3.78 : delta;
     if (axis === "x") {
       const nextX = Math.max(0, Math.min(currentTemplate.width, Number((currentPos.x + deltaMm).toFixed(1))));
-      onUpdatePosition(activeField, { x: nextX });
+      onUpdatePosition(selectedFieldKey, { x: nextX });
     } else {
       const nextY = Math.max(0, Math.min(currentTemplate.height, Number((currentPos.y + deltaMm).toFixed(1))));
-      onUpdatePosition(activeField, { y: nextY });
+      onUpdatePosition(selectedFieldKey, { y: nextY });
     }
   };
 
@@ -85,12 +89,16 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
       <div className="calibration-body">
         {/* Champ à régler */}
         <div className="form-group">
-          <label className="form-label">Champ sélectionné</label>
+          <div className="label-with-value">
+            <label className="form-label">Champ sélectionné</label>
+            {!activeField && <span className="param-value" style={{ fontStyle: "italic", opacity: 0.7 }}>Aucun rectangle actif</span>}
+          </div>
           <select
             className="form-select"
-            value={activeField}
-            onChange={(e) => onSelectField(e.target.value as FieldKey)}
+            value={activeField || ""}
+            onChange={(e) => onSelectField(e.target.value ? (e.target.value as FieldKey) : null)}
           >
+            <option value="">— Aucun (cliquez sur l'aperçu) —</option>
             {(Object.keys(fieldNamesMap) as FieldKey[]).map((key) => (
               <option key={key} value={key}>
                 {fieldNamesMap[key]}
@@ -113,7 +121,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                 onChange={(e) => {
                   const val = Number(e.target.value);
                   const inMm = unit === "px" ? val / 3.78 : val;
-                  onUpdatePosition(activeField, { y: inMm });
+                  onUpdatePosition(selectedFieldKey, { y: inMm });
                 }}
               />
               <button type="button" className="stepper-btn" onClick={() => handleStep("y", 0.5)}>+</button>
@@ -132,7 +140,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                 onChange={(e) => {
                   const val = Number(e.target.value);
                   const inMm = unit === "px" ? val / 3.78 : val;
-                  onUpdatePosition(activeField, { x: inMm });
+                  onUpdatePosition(selectedFieldKey, { x: inMm });
                 }}
               />
               <button type="button" className="stepper-btn" onClick={() => handleStep("x", 0.5)}>+</button>
@@ -153,7 +161,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
             step="0.1"
             className="gold-range-slider"
             value={currentPos.size}
-            onChange={(e) => onUpdatePosition(activeField, { size: Number(e.target.value) })}
+            onChange={(e) => onUpdatePosition(selectedFieldKey, { size: Number(e.target.value) })}
           />
         </div>
 

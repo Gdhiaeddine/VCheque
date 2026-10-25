@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 800" fill="none" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="goldLineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E1C989" stop-opacity="0.5" />
+      <stop offset="50%" stop-color="#C5A15A" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#8E7544" stop-opacity="0.1" />
+    </linearGradient>
+
+    <linearGradient id="goldSweepGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#C5A15A" stop-opacity="0" />
+      <stop offset="40%" stop-color="#E1C989" stop-opacity="0.4" />
+      <stop offset="80%" stop-color="#C5A15A" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#C5A15A" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- 1. Upper-left geometric lines & Algerian star motif -->
+  <g opacity="0.45">
+    <!-- Fine corner frame lines -->
+    <path d="M0 16 L48 16 L64 32 L64 64" stroke="url(#goldLineGrad)" stroke-width="0.8" />
+    <path d="M16 0 L16 48 L32 64 L64 64" stroke="url(#goldLineGrad)" stroke-width="0.8" />
+    <line x1="0" y1="28" x2="36" y2="28" stroke="#C5A15A" stroke-width="0.5" stroke-dasharray="2 3" />
+    <line x1="28" y1="0" x2="28" y2="36" stroke="#C5A15A" stroke-width="0.5" stroke-dasharray="2 3" />
+
+    <!-- Delicate 8-point Algerian star rosette at (24, 24) -->
+    <g transform="translate(26, 26) scale(0.7)">
+      <rect x="-8" y="-8" width="16" height="16" stroke="#E1C989" stroke-width="0.8" fill="none" />
+      <rect x="-8" y="-8" width="16" height="16" stroke="#E1C989" stroke-width="0.8" fill="none" transform="rotate(45)" />
+      <circle cx="0" cy="0" r="2.5" fill="#E1C989" />
+    </g>
+  </g>
+
+  <!-- 2. Delicate curved gold sweeping line across upper area -->
+  <g opacity="0.35">
+    <path d="M-20 135 C50 115 150 145 270 120" stroke="url(#goldSweepGrad)" stroke-width="0.9" />
+    <path d="M-20 142 C50 122 150 152 270 127" stroke="url(#goldSweepGrad)" stroke-width="0.5" stroke-dasharray="3 4" opacity="0.6" />
+    <circle cx="110" cy="132" r="1.5" fill="#E1C989" opacity="0.7" />
+  </g>
+
+  <!-- 3. Fine vertical boundary rule with gold accent ticks -->
+  <g opacity="0.25">
+    <line x1="249" y1="60" x2="249" y2="740" stroke="#C5A15A" stroke-width="0.5" stroke-opacity="0.3" />
+    <circle cx="249" cy="180" r="1.5" fill="#E1C989" />
+    <circle cx="249" cy="420" r="1.5" fill="#E1C989" />
+    <circle cx="249" cy="620" r="1.5" fill="#E1C989" />
+  </g>
+
+  <!-- 4. Partial gold arc entering from lower-right edge -->
+  <g opacity="0.38">
+    <path d="M265 520 C185 550 190 660 265 690" stroke="url(#goldLineGrad)" stroke-width="0.85" />
+    <path d="M272 530 C202 558 206 652 272 680" stroke="url(#goldLineGrad)" stroke-width="0.5" stroke-dasharray="3 4" opacity="0.5" />
+    <circle cx="205" cy="605" r="1.8" fill="#E1C989" opacity="0.6" />
+  </g>
+
+  <!-- 5. Bottom corners subtle geometric motifs -->
+  <g opacity="0.35">
+    <!-- Bottom left motif -->
+    <path d="M0 784 L40 784 L52 796 L52 800" stroke="url(#goldLineGrad)" stroke-width="0.8" />
+    <path d="M16 800 L16 768 L28 756 L44 756" stroke="url(#goldLineGrad)" stroke-width="0.5" stroke-dasharray="2 3" />
+    
+    <!-- Small Algerian diamond motif bottom left -->
+    <polygon points="26,778 32,784 26,790 20,784" stroke="#E1C989" stroke-width="0.75" fill="none" />
+    <circle cx="26" cy="784" r="1" fill="#E1C989" />
+
+    <!-- Bottom right subtle corner line -->
+    <path d="M250 784 L215 784 L205 794 L205 800" stroke="url(#goldLineGrad)" stroke-width="0.8" />
+  </g>
+</svg>

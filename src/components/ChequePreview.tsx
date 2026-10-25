@@ -13,8 +13,8 @@ interface ChequePreviewProps {
   isCrossed?: boolean;
   crossedWithText?: boolean;
   formattedNumeric?: string;
-  activeField: FieldKey;
-  onSelectField: (key: FieldKey) => void;
+  activeField: FieldKey | null;
+  onSelectField: (key: FieldKey | null) => void;
   onUpdateFieldPosition: (key: FieldKey, patch: { x?: number; y?: number }) => void;
   showGuides: boolean;
   scale: number;
@@ -112,6 +112,14 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
     }
   };
 
+  // Désélectionne le rectangle actif lors d'un clic dans une zone vide
+  const handleStageClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest(".positioned-field")) {
+      onSelectField(null);
+    }
+  };
+
   // Met à jour dynamiquement la conversion millimètre -> pixel sur le canevas du chèque
   // pour que la taille du texte s'adapte strictement au chèque rendu, et non à la taille de la fenêtre
   React.useEffect(() => {
@@ -185,7 +193,7 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
         </div>
       </div>
 
-      <div className="preview-canvas-stage">
+      <div className="preview-canvas-stage" onClick={handleStageClick}>
         <div
           ref={paperRef}
           className="cheque-paper-canvas"
@@ -194,6 +202,7 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
             transform: `scale(${scale / 100})`,
             backgroundImage: activeBg
           }}
+          onClick={handleStageClick}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
         >
@@ -257,6 +266,10 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
             className={`positioned-field ${activeField === "beneficiary" ? "selected" : ""}`}
             style={getStyle("beneficiary")}
             onPointerDown={(e) => handlePointerDown("beneficiary", e)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectField("beneficiary");
+            }}
             title="Bénéficiaire (glisser pour ajuster)"
           >
             <span className="field-text">{beneficiary || "Bénéficiaire"}</span>
@@ -272,6 +285,10 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
             className={`positioned-field ${activeField === "words" ? "selected" : ""}`}
             style={getStyle("words")}
             onPointerDown={(e) => handlePointerDown("words", e)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectField("words");
+            }}
             title="Montant en lettres (L1)"
           >
             <span className="field-text">{wordsL1}</span>
@@ -288,6 +305,10 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
               className={`positioned-field ${activeField === "wordsSecondLine" ? "selected" : ""}`}
               style={getStyle("wordsSecondLine")}
               onPointerDown={(e) => handlePointerDown("wordsSecondLine", e)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectField("wordsSecondLine");
+              }}
               title="Montant en lettres (L2)"
             >
               <span className="field-text">{wordsL2}</span>
@@ -304,6 +325,10 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
             className={`positioned-field numeric ${activeField === "numeric" ? "selected" : ""}`}
             style={getStyle("numeric")}
             onPointerDown={(e) => handlePointerDown("numeric", e)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectField("numeric");
+            }}
             title="Montant en chiffres"
           >
             <span className="field-text">{formattedAmount}</span>
@@ -319,6 +344,10 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
             className={`positioned-field ${activeField === "place" ? "selected" : ""}`}
             style={getStyle("place")}
             onPointerDown={(e) => handlePointerDown("place", e)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectField("place");
+            }}
             title="Lieu (glisser pour ajuster)"
           >
             <span className="field-text">{place || "Lieu"}</span>
@@ -334,6 +363,10 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
             className={`positioned-field ${activeField === "date" ? "selected" : ""}`}
             style={getStyle("date")}
             onPointerDown={(e) => handlePointerDown("date", e)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectField("date");
+            }}
             title="Date (glisser pour ajuster)"
           >
             <span className="field-text">{formattedDate || "Date"}</span>

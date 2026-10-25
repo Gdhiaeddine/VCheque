@@ -1,0 +1,438 @@
+/* ==========================================================================
+   SPLASH SCREEN PREMIUM — Virtanis Cheq
+   Émeraude profond & or champagne. Couches indépendantes, pointer-events:none
+   pour tout élément décoratif, aucune scrollbar, aucune animation continue.
+   ========================================================================== */
+
+.splash-screen {
+  /* Palette de marque Virtanis (scopée à l'écran de démarrage) */
+  --v-emerald-deep: #061E19;
+  --v-emerald-dark: #082820;
+  --v-emerald: #0B3028;
+  --v-emerald-mid: #123D31;
+  --v-emerald-light: #1B4A3A;
+
+  --v-gold-dark: #8C682C;
+  --v-gold: #C49A4A;
+  --v-gold-light: #E4C77D;
+  --v-gold-highlight: #F2D99A;
+
+  --v-ivory: #F6F2E8;
+  --v-ivory-muted: #DAD7CC;
+  --v-text-muted: #B7BEB2;
+
+  --v-gold-line: rgba(218, 181, 105, 0.75);
+  --v-gold-subtle: rgba(196, 154, 74, 0.22);
+
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse 62% 52% at 50% 42%, rgba(25, 76, 57, 0.34) 0%, rgba(11, 48, 40, 0.08) 45%, transparent 72%),
+    radial-gradient(ellipse 40% 34% at 32% 64%, rgba(18, 61, 49, 0.35) 0%, transparent 70%),
+    linear-gradient(135deg, #082820 0%, #0B3028 48%, #061E19 100%);
+  color: var(--v-ivory);
+  font-family: "Manrope", "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  user-select: none;
+  cursor: default;
+  opacity: 1;
+  transition: opacity 480ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.splash-screen * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.splash-screen.splash-fading {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Les couches décoratives n'interceptent jamais les interactions */
+.splash-bg,
+.splash-grain,
+.splash-monument,
+.splash-cheque,
+.splash-curves,
+.splash-curves svg,
+.splash-ornament,
+.splash-ornament img {
+  pointer-events: none;
+}
+
+/* --- 1) Vignette atmosphérique ------------------------------------------ */
+.splash-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.splash-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(6, 30, 25, 0.5) 0%, transparent 16%, transparent 78%, rgba(4, 20, 16, 0.72) 100%),
+    radial-gradient(ellipse 95% 88% at 50% 44%, transparent 52%, rgba(4, 18, 14, 0.55) 100%);
+}
+
+/* Grain très fin, contraste quasi imperceptible */
+.splash-grain {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.5 0'/></filter><rect width='140' height='140' filter='url(%23g)'/></svg>");
+  background-size: 140px 140px;
+  opacity: 0.05;
+}
+
+/* --- 2) Monument du Martyr (Maqam Echahid, illustration dorée) ------------ */
+.splash-monument {
+  position: absolute;
+  top: 5%;
+  left: 0;
+  width: min(33vw, 520px);
+  height: 84%;
+  z-index: 1;
+  -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.8) 62%, transparent 100%);
+  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.8) 62%, transparent 100%);
+}
+
+.splash-monument-inner {
+  width: 100%;
+  height: 100%;
+  -webkit-mask-image: linear-gradient(180deg, #000 6%, rgba(0, 0, 0, 0.95) 55%, rgba(0, 0, 0, 0.55) 82%, transparent 98%);
+  mask-image: linear-gradient(180deg, #000 6%, rgba(0, 0, 0, 0.95) 55%, rgba(0, 0, 0, 0.55) 82%, transparent 98%);
+}
+
+.splash-monument img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% top;
+  opacity: 0.88;
+  filter: brightness(0.92) saturate(0.88);
+}
+
+/* --- 3) Chèque décoratif (coin inférieur droit) -------------------------- */
+.splash-cheque {
+  position: absolute;
+  right: -9%;
+  bottom: -10%;
+  width: min(47vw, 770px);
+  z-index: 1;
+  transform: rotate(-13deg);
+  transform-origin: 62% 42%;
+  filter: drop-shadow(0 26px 52px rgba(3, 16, 12, 0.5));
+  -webkit-mask-image: linear-gradient(118deg, transparent 0%, rgba(0, 0, 0, 0.8) 12%, rgba(0, 0, 0, 0.97) 30%, #000 46%);
+  mask-image: linear-gradient(118deg, transparent 0%, rgba(0, 0, 0, 0.8) 12%, rgba(0, 0, 0, 0.97) 30%, #000 46%);
+}
+
+.splash-cheque img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.splash-cheque::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(122deg, rgba(246, 242, 232, 0.18) 0%, transparent 30%, transparent 66%, rgba(196, 154, 74, 0.2) 100%);
+  mix-blend-mode: screen;
+}
+
+/* --- 4) Courbes dorées --------------------------------------------------- */
+.splash-curves {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+}
+
+.splash-curves svg {
+  position: absolute;
+  display: block;
+}
+
+.splash-curves-tr {
+  top: -2%;
+  right: -1%;
+  width: min(58vw, 900px);
+  opacity: 0.9;
+}
+
+.splash-curves-bl {
+  bottom: -6%;
+  left: -2%;
+  width: min(48vw, 760px);
+  opacity: 0.9;
+}
+
+.splash-curves-br {
+  bottom: -3%;
+  right: -2%;
+  width: min(30vw, 470px);
+  opacity: 0.8;
+}
+
+/* --- 5) Ornements géométriques ------------------------------------------ */
+.splash-ornament {
+  position: absolute;
+  z-index: 2;
+}
+
+.splash-ornament img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.splash-ornament-tr {
+  top: 0;
+  right: 0;
+  width: min(13vw, 196px);
+  opacity: 0.55;
+}
+
+.splash-ornament-bl {
+  bottom: 0;
+  left: 0;
+  width: min(13.5vw, 210px);
+  opacity: 0.48;
+}
+
+/* --- 6) Contenu central : marque & chargement --------------------------- */
+.splash-content {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  transform: translateY(-2.5vh);
+  padding: 0 24px;
+}
+
+.splash-monogram {
+  width: clamp(96px, 7.4vw, 128px);
+  aspect-ratio: 1 / 1;
+  background: linear-gradient(135deg, #F2D99A 0%, #C49A4A 42%, #E4C77D 68%, #8C682C 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  margin-bottom: clamp(18px, 2.4vh, 30px);
+}
+
+.splash-brand {
+  margin: 0;
+  font-size: clamp(40px, 3.8vw, 58px);
+  font-weight: 500;
+  letter-spacing: 0.34em;
+  padding-left: 0.34em;
+  text-transform: uppercase;
+  color: var(--v-ivory);
+  line-height: 1.1;
+  text-shadow: 0 1px 12px rgba(6, 30, 25, 0.4);
+}
+
+.splash-product {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 1.4vw, 24px);
+  margin-top: clamp(10px, 1.6vh, 18px);
+}
+
+.splash-product-rule {
+  width: clamp(56px, 6vw, 96px);
+  height: 1px;
+  flex-shrink: 0;
+}
+
+.splash-product-rule-left {
+  background: linear-gradient(90deg, rgba(218, 181, 105, 0.05), var(--v-gold-line));
+}
+
+.splash-product-rule-right {
+  background: linear-gradient(90deg, var(--v-gold-line), rgba(218, 181, 105, 0.05));
+}
+
+.splash-product-name {
+  font-size: clamp(24px, 2.35vw, 36px);
+  font-weight: 600;
+  letter-spacing: 0.5em;
+  padding-left: 0.5em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  background: linear-gradient(120deg, #F2D99A 0%, #C49A4A 48%, #E4C77D 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.splash-desc {
+  margin: clamp(18px, 3vh, 30px) 0 0;
+  font-size: clamp(15px, 1.35vw, 21px);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--v-ivory);
+  opacity: 0.88;
+}
+
+/* Barre de progression fine */
+.splash-progress {
+  margin-top: clamp(26px, 4.5vh, 44px);
+  width: clamp(232px, 21.5vw, 324px);
+  height: 10px;
+  padding: 1.5px;
+  border: 1px solid rgba(196, 154, 74, 0.35);
+  border-radius: 6px;
+  background: rgba(6, 30, 25, 0.55);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.splash-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #8C682C 0%, #C49A4A 45%, #E4C77D 88%);
+  box-shadow: inset 0 1px 0 rgba(255, 244, 214, 0.35);
+  transition: width 90ms linear;
+}
+
+.splash-status {
+  margin: clamp(12px, 2vh, 18px) 0 0;
+  font-size: clamp(12px, 0.95vw, 15px);
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  color: var(--v-ivory-muted);
+}
+
+.splash-status-error {
+  color: #E8B06A;
+}
+
+/* --- 7) Signatures de pied ---------------------------------------------- */
+.splash-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 clamp(28px, 3.6vw, 58px) clamp(20px, 3.4vh, 46px);
+  pointer-events: none;
+}
+
+.splash-footer-company {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.splash-footer-rule {
+  width: 34px;
+  height: 1px;
+  flex-shrink: 0;
+}
+
+.splash-footer-rule-left {
+  background: linear-gradient(90deg, rgba(218, 181, 105, 0.06), var(--v-gold-line));
+}
+
+.splash-footer-rule-right {
+  background: linear-gradient(90deg, var(--v-gold-line), rgba(218, 181, 105, 0.06));
+}
+
+.splash-footer-company-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+
+.splash-footer-name {
+  font-size: clamp(16px, 1.25vw, 19px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--v-gold-light);
+}
+
+.splash-footer-tagline {
+  font-size: clamp(11px, 0.85vw, 13px);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--v-ivory-muted);
+  opacity: 0.9;
+}
+
+.splash-footer-partner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.splash-footer-scrim {
+  position: absolute;
+  right: -2%;
+  bottom: -2%;
+  width: 48%;
+  height: 180px;
+  background: radial-gradient(ellipse 110% 110% at 100% 100%, rgba(4, 20, 16, 0.85) 0%, rgba(4, 20, 16, 0.45) 48%, transparent 76%);
+  pointer-events: none;
+}
+
+.splash-footer-company,
+.splash-footer-partner {
+  position: relative;
+}
+
+.splash-footer-partner-text {
+  font-size: clamp(10.5px, 0.8vw, 12.5px);
+  font-weight: 500;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--v-gold-highlight);
+  opacity: 0.95;
+}
+
+/* --- Responsivité --------------------------------------------------------- */
+@media (max-height: 780px) {
+  .splash-monument {
+    height: 66%;
+    width: min(28vw, 400px);
+  }
+
+  .splash-monument img {
+    opacity: 0.66;
+  }
+}
+
+@media (max-width: 1100px) {
+  .splash-ornament-tr {
+    width: 120px;
+  }
+
+  .splash-ornament-bl {
+    width: 128px;
+  }
+
+  .splash-cheque {
+    width: 56vw;
+  }
+}
+
+/* Accessibilité : mouvement réduit */
+@media (prefers-reduced-motion: reduce) {
+  .splash-screen {
+    transition-duration: 200ms;
+  }
+}

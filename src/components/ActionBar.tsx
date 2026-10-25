@@ -1,12 +1,14 @@
 import React from "react";
-import { Edit3, Save, Printer, PlusCircle, CheckCircle2, Clock } from "lucide-react";
+import { Edit3, Save, Printer, PlusCircle, CheckCircle2, Clock, FileDown } from "lucide-react";
 import type { ChequeStatus } from "../types";
 
 interface ActionBarProps {
   onEdit: () => void;
   onSave: () => void;
   onPrint: () => void;
+  onExportPdf?: () => void;
   onNew?: () => void;
+  showNewButton?: boolean;
   activeStatus?: ChequeStatus | null;
   printCount?: number;
 }
@@ -15,19 +17,21 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onEdit,
   onSave,
   onPrint,
+  onExportPdf,
   onNew,
+  showNewButton = true,
   activeStatus,
   printCount = 0
 }) => {
   return (
     <div className="app-action-bar">
       <div className="action-bar-left">
-        {onNew && (
+        {onNew && showNewButton && (
           <button
             type="button"
             className="btn-action-card btn-new-cheque"
             onClick={onNew}
-            title="Réinitialiser pour créer un nouveau chèque"
+            title="Créer un nouveau chèque vierge"
           >
             <PlusCircle size={16} className="btn-action-icon" />
             <span>Nouveau chèque</span>
@@ -71,6 +75,18 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       </div>
 
       <div className="action-bar-right">
+        {onExportPdf && (
+          <button
+            type="button"
+            className="btn-action-card btn-pdf-export"
+            onClick={onExportPdf}
+            title="Exporter ce chèque directement en fichier PDF vectoriel"
+          >
+            <FileDown size={17} className="btn-action-icon text-gold" />
+            <span>Exporter en PDF</span>
+          </button>
+        )}
+
         <button
           type="button"
           className="btn-gold-primary btn-print-main"

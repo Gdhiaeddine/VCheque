@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 420" fill="none">
+  <defs>
+    <!-- Gold architectural gradients -->
+    <linearGradient id="goldLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F2DFB3" stop-opacity="0.95" />
+      <stop offset="45%" stop-color="#C5A15A" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#8E7544" stop-opacity="0.3" />
+    </linearGradient>
+
+    <linearGradient id="goldShine" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="30%" stop-color="#E1C989" stop-opacity="0.75" />
+      <stop offset="80%" stop-color="#C5A15A" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#0B3028" stop-opacity="0" />
+    </linearGradient>
+
+    <linearGradient id="goldShadow" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#A58442" stop-opacity="0.6" />
+      <stop offset="50%" stop-color="#6E5629" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#08251F" stop-opacity="0.05" />
+    </linearGradient>
+
+    <linearGradient id="emeraldBackdrop" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#1E5C4A" stop-opacity="0.5" />
+      <stop offset="50%" stop-color="#144437" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#08251F" stop-opacity="0" />
+    </linearGradient>
+
+    <linearGradient id="leafFacetLeft" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#C5A15A" stop-opacity="0.6" />
+      <stop offset="70%" stop-color="#E1C989" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#9C7F40" stop-opacity="0.3" />
+    </linearGradient>
+
+    <linearGradient id="leafFacetRight" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#C5A15A" stop-opacity="0.5" />
+      <stop offset="70%" stop-color="#E1C989" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#9C7F40" stop-opacity="0.25" />
+    </linearGradient>
+
+    <radialGradient id="monumentGlow" cx="50%" cy="40%" r="55%">
+      <stop offset="0%" stop-color="#C5A15A" stop-opacity="0.22" />
+      <stop offset="40%" stop-color="#17483A" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#08251F" stop-opacity="0" />
+    </radialGradient>
+
+    <linearGradient id="fadeDown" x1="0%" y1="70%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="1" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </linearGradient>
+
+    <mask id="bottomFadeMask">
+      <rect x="0" y="0" width="320" height="420" fill="url(#fadeDown)" />
+    </mask>
+  </defs>
+
+  <!-- Atmospheric subtle emerald glow behind monument -->
+  <circle cx="160" cy="180" r="140" fill="url(#monumentGlow)" />
+
+  <g mask="url(#bottomFadeMask)">
+    <!-- Monument central rear leaf (perspective depth) -->
+    <path d="M160 38 L155 70 Q152 140 148 240 L160 242 L172 240 Q168 140 165 70 Z" 
+          fill="url(#emeraldBackdrop)" stroke="#A58442" stroke-width="0.75" stroke-opacity="0.4" />
+
+    <!-- Central spire / turret beacon on top -->
+    <path d="M160 18 L162.5 36 L157.5 36 Z" fill="url(#goldShine)" />
+    <circle cx="160" cy="18" r="2" fill="#FFFFFF" opacity="0.9" />
+    <path d="M158 36 L162 36 L163 46 L157 46 Z" fill="url(#goldLight)" />
+    
+    <!-- Central Dome / Turret Chamber (where leaves converge) -->
+    <ellipse cx="160" cy="56" rx="9" ry="5.5" fill="#17483A" stroke="#C5A15A" stroke-width="0.9" />
+    <path d="M152 56 Q160 48 168 56 L166 66 Q160 62 154 66 Z" fill="url(#goldLight)" opacity="0.85" />
+    <ellipse cx="160" cy="65" rx="7" ry="3.5" fill="#0B3028" stroke="#E1C989" stroke-width="0.7" />
+
+    <!-- Left Palm Leaf (Sweeping Architectural Curve) -->
+    <!-- Outer rim / edge highlight -->
+    <path d="M158 48 C150 90 118 165 62 305 C74 308 92 308 106 305 C136 210 152 135 158 76 Z" 
+          fill="url(#leafFacetLeft)" opacity="0.88" />
+    
+    <!-- Inner face / shadow facet left -->
+    <path d="M158 76 C152 135 136 210 106 305 C118 303 130 298 142 292 C154 210 159 130 160 84 Z" 
+          fill="url(#goldShadow)" opacity="0.85" />
+
+    <!-- Left Leaf Fluting & Ridge Lines -->
+    <path d="M158 48 C150 90 118 165 62 305" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.65" stroke-linecap="round" />
+    <path d="M157 60 C149 105 125 180 84 306" stroke="#E1C989" stroke-width="0.7" stroke-opacity="0.45" />
+    <path d="M158 76 C152 135 136 210 106 305" stroke="#F2DFB3" stroke-width="0.9" stroke-opacity="0.55" />
+    <path d="M159 90 C154 150 144 220 124 298" stroke="#C5A15A" stroke-width="0.6" stroke-opacity="0.35" />
+
+    <!-- Right Palm Leaf (Sweeping Architectural Curve) -->
+    <!-- Outer rim / edge highlight -->
+    <path d="M162 48 C170 90 202 165 258 305 C246 308 228 308 214 305 C184 210 168 135 162 76 Z" 
+          fill="url(#leafFacetRight)" opacity="0.88" />
+
+    <!-- Inner face / shadow facet right -->
+    <path d="M162 76 C168 135 184 210 214 305 C202 303 190 298 178 292 C166 210 161 130 160 84 Z" 
+          fill="url(#goldShadow)" opacity="0.75" />
+
+    <!-- Right Leaf Fluting & Ridge Lines -->
+    <path d="M162 48 C170 90 202 165 258 305" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.65" stroke-linecap="round" />
+    <path d="M163 60 C171 105 195 180 236 306" stroke="#E1C989" stroke-width="0.7" stroke-opacity="0.45" />
+    <path d="M162 76 C168 135 184 210 214 305" stroke="#F2DFB3" stroke-width="0.9" stroke-opacity="0.55" />
+    <path d="M161 90 C166 150 176 220 196 298" stroke="#C5A15A" stroke-width="0.6" stroke-opacity="0.35" />
+
+    <!-- Central rib / crown joint -->
+    <path d="M160 48 L160 84" stroke="#FFF" stroke-width="1.4" stroke-opacity="0.7" />
+
+    <!-- Intermediate Viewing Turrets & Ribs -->
+    <path d="M150 102 C155 100 165 100 170 102" stroke="#E1C989" stroke-width="1" stroke-opacity="0.5" />
+    <path d="M146 128 C153 125 167 125 174 128" stroke="#C5A15A" stroke-width="0.9" stroke-opacity="0.45" />
+    <path d="M141 160 C151 156 169 156 179 160" stroke="#C5A15A" stroke-width="0.8" stroke-opacity="0.35" />
+    <path d="M136 200 C148 195 172 195 184 200" stroke="#A58442" stroke-width="0.8" stroke-opacity="0.3" />
+    <path d="M128 250 C145 244 175 244 192 250" stroke="#8E7544" stroke-width="0.75" stroke-opacity="0.25" />
+
+    <!-- Central Podium & Eternal Flame Base (Sanctuary) -->
+    <polygon points="142,285 178,285 184,300 136,300" fill="#144437" stroke="#C5A15A" stroke-width="0.8" stroke-opacity="0.5" />
+    <ellipse cx="160" cy="285" rx="14" ry="4" fill="#08251F" stroke="#E1C989" stroke-width="0.8" />
+    
+    <!-- Eternal flame glow -->
+    <ellipse cx="160" cy="284" rx="4" ry="2.5" fill="#FFE29A" opacity="0.9" />
+    <path d="M160 274 Q162 280 160 284 Q158 280 160 274 Z" fill="#FFF8DB" opacity="0.95" />
+
+    <!-- Stepped Esplanade / Plaza Base -->
+    <!-- Tier 1 -->
+    <path d="M48 312 L272 312 L266 322 L54 322 Z" fill="url(#goldShadow)" stroke="#C5A15A" stroke-width="0.6" stroke-opacity="0.4" />
+    <!-- Tier 2 -->
+    <path d="M38 322 L282 322 L274 334 L46 334 Z" fill="#08251F" stroke="#8E7544" stroke-width="0.6" stroke-opacity="0.3" />
+    <!-- Tier 3 Base -->
+    <path d="M26 334 L294 334 L284 348 L36 348 Z" fill="#061F1A" stroke="#C5A15A" stroke-width="0.5" stroke-opacity="0.2" />
+    
+    <!-- Subtle horizontal plaza tiles -->
+    <line x1="80" y1="317" x2="240" y2="317" stroke="#C5A15A" stroke-width="0.5" stroke-opacity="0.25" />
+    <line x1="60" y1="328" x2="260" y2="328" stroke="#E1C989" stroke-width="0.5" stroke-opacity="0.2" />
+    <line x1="45" y1="341" x2="275" y2="341" stroke="#8E7544" stroke-width="0.5" stroke-opacity="0.15" />
+  </g>
+
+  <!-- Architectural ray / light accents -->
+  <line x1="160" y1="12" x2="160" y2="4" stroke="#FFE9B8" stroke-width="1" stroke-linecap="round" opacity="0.7" />
+  <line x1="152" y1="14" x2="146" y2="8" stroke="#FFE9B8" stroke-width="0.8" stroke-linecap="round" opacity="0.5" />
+  <line x1="168" y1="14" x2="174" y2="8" stroke="#FFE9B8" stroke-width="0.8" stroke-linecap="round" opacity="0.5" />
+</svg>

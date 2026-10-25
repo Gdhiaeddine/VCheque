@@ -19,7 +19,8 @@ import {
   Plus,
   Minus,
   Eye,
-  Maximize2
+  Maximize2,
+  FileDown
 } from "lucide-react";
 import type { BankTemplate, PrintSettings, PrintPlacement, PrintPaperFormat } from "../types";
 
@@ -27,6 +28,7 @@ export interface PrintModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirmPrint: () => void;
+  onExportPdf?: () => void;
   settings: PrintSettings;
   onChangeSettings: (settings: PrintSettings) => void;
   currentTemplate: BankTemplate;
@@ -144,6 +146,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
   isOpen,
   onClose,
   onConfirmPrint,
+  onExportPdf,
   settings,
   onChangeSettings,
   currentTemplate,
@@ -669,6 +672,17 @@ export const PrintModal: React.FC<PrintModalProps> = ({
             <button type="button" className="btn-modal-secondary" onClick={onClose}>
               Annuler
             </button>
+            {onExportPdf && (
+              <button
+                type="button"
+                className="btn-modal-secondary btn-modal-pdf"
+                onClick={onExportPdf}
+                title="Générer un fichier PDF haute résolution avec cette mise en page"
+              >
+                <FileDown size={16} />
+                <span>Exporter en PDF</span>
+              </button>
+            )}
             <button
               type="button"
               className="btn-modal-primary"

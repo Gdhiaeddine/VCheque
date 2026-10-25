@@ -69,6 +69,7 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const jsonImportRef = useRef<HTMLInputElement>(null);
   const dragStartRef = useRef<{ clientX: number; clientY: number; origX: number; origY: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -192,6 +193,19 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
     }
   };
 
+  // Upload bank logo / icon
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && editingTemplate) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        setEditingTemplate((prev) => (prev ? { ...prev, logoUrl: result } : null));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // Update field coordinate or dimension
   const handleUpdateField = (key: FieldKey, patch: Partial<BankTemplate["positions"][FieldKey]>) => {
     if (!editingTemplate) return;
@@ -276,26 +290,34 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
         <div className="header-breadcrumbs">
           <button type="button" className="btn-back-crumb" onClick={onBackToHome}>
             <ArrowLeft size={16} />
-            <span>Retour à la saisie de chèque</span>
+            <span>Retour à l'accueil (Saisie)</span>
           </button>
         </div>
 
         <div className="header-main-title-row">
           <div>
-            <h1 className="templates-main-title">Modèles Bancaires & Chéquiers</h1>
-            <p className="templates-main-subtitle">
+            <div className="title-with-badge">
+              <h1 className="history-main-title">Modèles Bancaires & Chéquiers</h1>
+              <span className="count-pill">{templates.length}</span>
+              <span className="db-badge" title="Stockés dans un fichier de configuration externe copiable">
+                Config JSON
+              </span>
+            </div>
+            <p className="history-main-subtitle">
               Créez et personnalisez les formats de chèques de n'importe quelle banque avec leurs emplacements et longueurs de lignes par défaut.
             </p>
           </div>
 
-          <button
-            type="button"
-            className="btn-create-template"
-            onClick={handleCreateNew}
-          >
-            <Plus size={16} />
-            <span>Nouveau modèle de chèque</span>
-          </button>
+          <div className="header-actions-group">
+            <button
+              type="button"
+              className="btn-create-template"
+              onClick={handleCreateNew}
+            >
+              <Plus size={16} />
+              <span>Nouveau modèle de chèque</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -398,7 +420,58 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
                 </div>
               </div>
 
-              {/* Bloc 2: Image du Chèque Scanné */}
+              {/* Bloc 2: Logo / Icône de la Banque */}
+              <div className="editor-section">
+                <h3 className="editor-section-title">
+                  <Building2 size={16} />
+                  <span>Logo ou Icône de la banque</span>
+                </h3>
+
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png, image/jpeg, image/webp, image/svg+xml"
+                  hidden
+                  onChange={handleLogoUpload}
+                />
+
+                <div className="image-upload-box logo-upload-box">
+                  {editingTemplate.logoUrl ? (
+                    <div className="uploaded-preview-badge logo-preview-badge">
+                      <div className="logo-thumb-wrapper">
+                        <img src={editingTemplate.logoUrl} alt="Logo banque" className="logo-thumb-preview" />
+                      </div>
+                      <div className="thumb-meta">
+                        <span className="thumb-status">✓ Logo actif</span>
+                        <div className="thumb-actions">
+                          <button
+                            type="button"
+                            className="btn-thumb-action"
+                            onClick={() => logoInputRef.current?.click()}
+                          >
+                            Remplacer le logo
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-thumb-action delete"
+                            onClick={() => setEditingTemplate({ ...editingTemplate, logoUrl: undefined })}
+                          >
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="empty-upload-prompt" onClick={() => logoInputRef.current?.click()}>
+                      <UploadCloud size={24} className="upload-icon" />
+                      <strong>Cliquez pour importer le logo de la banque</strong>
+                      <span>PNG, SVG, WEBP ou JPG (recommandé : format carré ou détouré)</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Bloc 2 bis: Image du Chèque Scanné */}
               <div className="editor-section">
                 <h3 className="editor-section-title">
                   <ImageIcon size={16} />
@@ -800,10 +873,14 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
               <div key={tpl.id} className={`template-catalog-card ${isCurrent ? "current-active" : ""}`}>
                 <div className="catalog-card-header">
                   <div className="card-badge-row">
-                    <span
-                      className="bank-color-dot"
-                      style={{ backgroundColor: tpl.themeColor || "var(--gold-primary)" }}
-                    />
+                    {tpl.logoUrl ? (
+                      <img src={tpl.logoUrl} alt={tpl.name} className="catalog-card-logo-img" />
+                    ) : (
+                      <span
+                        className="bank-color-dot"
+                        style={{ backgroundColor: tpl.themeColor || "var(--gold-primary)" }}
+                      />
+                    )}
                     <span className="card-bank-code">Code : {tpl.bankCode || "—"}</span>
                     {tpl.isCustom ? (
                       <span className="custom-model-tag">Personnalisé</span>

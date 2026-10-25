@@ -6,17 +6,20 @@ import { ChequePreview } from "./components/ChequePreview";
 import { BankTemplateSelector } from "./components/BankTemplateSelector";
 import { BankTemplatesPage } from "./components/BankTemplatesPage";
 import { HistoryPage } from "./components/HistoryPage";
+import { BeneficiariesPage } from "./components/BeneficiariesPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { CalibrationPanel } from "./components/CalibrationPanel";
 import { ActionBar } from "./components/ActionBar";
 import { amountInFrenchWords, splitWordsByLimit, formatNumericAmount } from "./moneyToWords";
 import { defaultBankTemplates, defaultPositions } from "./banksData";
-import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, AppSettings } from "./types";
+import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, AppSettings, PrintAttemptRecord } from "./types";
 import { PrintModal, getPaperDimensions, calculateChequePosition } from "./components/PrintModal";
+import { PrintConfirmationModal } from "./components/PrintConfirmationModal";
 import { SplashScreen } from "./components/SplashScreen";
-import { saveChequeRecord, findDuplicateCheque } from "./services/db";
+import { saveChequeRecord, findDuplicateCheque, autoRecordBeneficiary, logPrintAttempt, updatePrintAttemptStatus } from "./services/db";
 import { loadTemplatesFromConfigFile, saveTemplatesToConfigFile } from "./services/templatesConfig";
 import { loadAppSettings, saveAppSettings, resetAppSettings } from "./services/appSettings";
+import { exportChequeToPdf } from "./services/pdfExport";
 import {
   CheckCircle2,
   AlertCircle,
@@ -31,7 +34,9 @@ import {
   Building2,
   Sliders,
   Printer,
-  ZoomIn
+  ZoomIn,
+  Save,
+  FileText
 } from "lucide-react";
 
 const STORAGE_KEY = "cheque-studio-models-v6";
@@ -39,8 +44,11 @@ const PRINT_SETTINGS_KEY = "cheque-studio-print-settings-v1";
 const HISTORIQUE_STORAGE_KEY = "cheque-studio-history-v1";
 
 export default function App() {
-  // Splash Screen de démarrage (VCheque Studio & Virtanis)
+  // Splash Screen de démarrage (Virtanis Cheq)
   const [showSplash, setShowSplash] = useState<boolean>(true);
+
+  // Signal d'initialisation réelle : vrai quand le chargement de la configuration est terminé
+  const [initReady, setInitReady] = useState<boolean>(false);
 
   // 0. App Preferences & Settings
   const [appSettings, setAppSettings] = useState<AppSettings>(() => loadAppSettings());
@@ -68,7 +76,7 @@ export default function App() {
   });
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("el-salam");
-  const [activeField, setActiveField] = useState<FieldKey>("beneficiary");
+  const [activeField, setActiveField] = useState<FieldKey | null>("beneficiary");
   const [showGuides, setShowGuides] = useState<boolean>(true);
   const [scale, setScale] = useState<number>(100);
   const [activeTab, setActiveTab] = useState<NavTab>("home");
@@ -156,6 +164,25 @@ export default function App() {
     action: "save" | "print";
   } | null>(null);
 
+  // Validation d'impression physique effective (post-impression)
+  const [pendingPrintConfirmation, setPendingPrintConfirmation] = useState<{
+    isOpen: boolean;
+    attemptId: string;
+    recordId: string;
+    copyNumber: number;
+    chequeData: {
+      id: string;
+      amount: string;
+      beneficiary: string;
+      bankName: string;
+      date: string;
+      copyNumber: number;
+    };
+  } | null>(null);
+
+  // Modal de confirmation de nouveau chèque si des modifications sont non enregistrées
+  const [newChequeModalOpen, setNewChequeModalOpen] = useState<boolean>(false);
+
   // 6. Feedback / Toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null);
 
@@ -181,7 +208,8 @@ export default function App() {
           setTemplates(loaded);
         }
       })
-      .catch((err) => console.error("Erreur chargement modèles config:", err));
+      .catch((err) => console.error("Erreur chargement modèles config:", err))
+      .finally(() => setInitReady(true));
   }, []);
 
   // Persist templates to external JSON configuration file (not db) so user can copy and backup
@@ -259,8 +287,18 @@ export default function App() {
         return;
       }
 
+      if (e.key === "Escape") {
+        setActiveField(null);
+        return;
+      }
+
+      if (!activeField) {
+        return;
+      }
+
       const step = e.altKey ? 0.1 : e.shiftKey ? 2.0 : 0.5;
       const currentPos = currentTemplate.positions[activeField];
+      if (!currentPos) return;
 
       if (e.key === "ArrowUp") {
         e.preventDefault();
@@ -288,7 +326,40 @@ export default function App() {
     setToast({ message: "Saisie activée. Modifiez vos informations.", type: "info" });
   };
 
-  const handleNewCheque = () => {
+  // Détection si des données sont présentes sur le formulaire pour afficher le bouton "Nouveau chèque"
+  const hasChequeData = useMemo(() => {
+    return Boolean(
+      amount.trim() ||
+      (beneficiary.trim() && beneficiary.trim() !== "Entreprise Exemple SARL") ||
+      activeChequeId !== null
+    );
+  }, [amount, beneficiary, activeChequeId]);
+
+  // Détection fine si le chèque en cours a des modifications non enregistrées
+  const isFormDirty = useMemo(() => {
+    if (!activeChequeId) {
+      const num = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
+      const hasAmount = !isNaN(num) && num > 0;
+      const hasCustomBeneficiary = Boolean(
+        beneficiary.trim() && beneficiary.trim() !== "Entreprise Exemple SARL"
+      );
+      return hasAmount || hasCustomBeneficiary;
+    }
+    const saved = history.find((h) => h.id === activeChequeId);
+    if (!saved) return true;
+    return (
+      saved.amount !== amount ||
+      saved.beneficiary !== (beneficiary.trim() || "Bénéficiaire non spécifié") ||
+      saved.place !== (place.trim() || "Alger") ||
+      saved.date !== date ||
+      saved.bankTemplateId !== currentTemplate.id ||
+      (saved.isCrossed !== false) !== isCrossed ||
+      (saved.crossedWithText !== false) !== crossedWithText
+    );
+  }, [activeChequeId, history, amount, beneficiary, place, date, currentTemplate.id, isCrossed, crossedWithText]);
+
+  // Réinitialisation effective vers un nouveau chèque vierge
+  const executeNewCheque = () => {
     setAmount("");
     setBeneficiary("");
     setPlace(appSettings.defaultPlace || "Alger");
@@ -298,7 +369,21 @@ export default function App() {
     setActiveChequeId(null);
     setActiveChequeStatus(null);
     setActivePrintCount(0);
+    setNewChequeModalOpen(false);
     setToast({ message: "Nouveau chèque vierge prêt pour la saisie.", type: "info" });
+    setTimeout(() => {
+      document.getElementById("amount-field")?.focus();
+    }, 100);
+  };
+
+  // Clic sur "Nouveau chèque"
+  const handleNewCheque = () => {
+    if (!hasChequeData) return;
+    if (isFormDirty) {
+      setNewChequeModalOpen(true);
+    } else {
+      executeNewCheque();
+    }
   };
 
   const executeSave = (targetId?: string) => {
@@ -327,6 +412,9 @@ export default function App() {
     };
 
     saveChequeRecord(newRecord).catch(console.error);
+    if (newRecord.beneficiary && newRecord.beneficiary !== "Bénéficiaire non spécifié") {
+      autoRecordBeneficiary(newRecord.beneficiary).catch(console.error);
+    }
     setActiveChequeId(recordId);
     setActiveChequeStatus(newRecord.status);
     setActivePrintCount(newRecord.printCount || 0);
@@ -374,6 +462,37 @@ export default function App() {
     executeSave();
   };
 
+  const handleExportPdf = (mode: "exact-cheque" | "sheet" = "exact-cheque") => {
+    const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
+    if (isNaN(rawVal) || rawVal <= 0) {
+      setToast({ message: "Veuillez saisir un montant valide avant d'exporter en PDF.", type: "warning" });
+      return;
+    }
+
+    try {
+      exportChequeToPdf({
+        mode,
+        template: currentTemplate,
+        amount,
+        formattedNumeric,
+        words,
+        beneficiary: beneficiary.trim() || "Bénéficiaire",
+        place: place.trim() || "Alger",
+        date: date || new Date().toISOString().split("T")[0],
+        isCrossed,
+        crossedWithText,
+        printSettings
+      });
+      setToast({
+        message: `Fichier PDF téléchargé avec succès (${mode === "sheet" ? "Mise en page feuille" : "Format chèque 1:1"}).`,
+        type: "success"
+      });
+    } catch (err) {
+      console.error("Erreur génération PDF:", err);
+      setToast({ message: "Erreur lors de la création du document PDF.", type: "warning" });
+    }
+  };
+
   const handlePrint = async () => {
     const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
     if (isNaN(rawVal) || rawVal <= 0) {
@@ -418,9 +537,82 @@ export default function App() {
     const now = new Date().toISOString();
     const recordId = activeChequeId || ("cheque-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7));
     const existingRecord = history.find((h) => h.id === recordId);
+    const targetCopyNumber = (existingRecord?.printCount || activePrintCount || 0) + 1;
+    const attemptId = "attempt-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
 
-    const newPrintCount = (existingRecord?.printCount || activePrintCount || 0) + 1;
+    // 1. Enregistrer immédiatement la tentative dans le Journal d'Audit au statut "demandé" (requested)
+    const attemptRecord: PrintAttemptRecord = {
+      id: attemptId,
+      chequeId: recordId,
+      beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
+      amount,
+      bankName: currentTemplate.name,
+      bankTemplateId: currentTemplate.id,
+      paperFormat: printSettings.paperFormat,
+      placement: printSettings.placement,
+      status: "requested",
+      attemptedAt: now,
+      copyNumber: targetCopyNumber
+    };
+    logPrintAttempt(attemptRecord).catch(console.error);
 
+    // 2. Si le chèque n'a pas encore été sauvegardé en base, l'enregistrer comme brouillon pour préserver l'ID
+    if (!existingRecord) {
+      const draftRecord: ChequeRecord = {
+        id: recordId,
+        amount,
+        beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
+        place: place.trim() || "Alger",
+        date: date || new Date().toISOString().split("T")[0],
+        bankTemplateId: currentTemplate.id,
+        bankName: currentTemplate.name,
+        status: activeChequeStatus || "saved",
+        printCount: activePrintCount || 0,
+        isCrossed,
+        crossedWithText,
+        createdAt: now,
+        updatedAt: now
+      };
+      saveChequeRecord(draftRecord).catch(console.error);
+      setActiveChequeId(recordId);
+      setHistory((prev) => [draftRecord, ...prev.filter((item) => item.id !== recordId)]);
+    }
+
+    setToast({
+      message: "Envoi à l'imprimante... Veuillez valider la sortie papier après impression.",
+      type: "info"
+    });
+
+    // 3. Lancer le dialogue système d'impression et préparer le modal de confirmation post-impression
+    setTimeout(() => {
+      window.print();
+      setPendingPrintConfirmation({
+        isOpen: true,
+        attemptId,
+        recordId,
+        copyNumber: targetCopyNumber,
+        chequeData: {
+          id: recordId,
+          amount,
+          beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
+          bankName: currentTemplate.name,
+          date: date || new Date().toISOString().split("T")[0],
+          copyNumber: targetCopyNumber
+        }
+      });
+    }, 200);
+  };
+
+  const handlePostPrintSuccess = async () => {
+    if (!pendingPrintConfirmation) return;
+    const { attemptId, recordId, copyNumber } = pendingPrintConfirmation;
+    const now = new Date().toISOString();
+
+    // 1. Confirmer la tentative dans le journal d'audit
+    await updatePrintAttemptStatus(attemptId, "confirmed", { confirmedAt: now });
+
+    // 2. Mettre à jour le chèque comme imprimé (ou réimprimé)
+    const existingRecord = history.find((h) => h.id === recordId);
     const printedRecord: ChequeRecord = {
       id: recordId,
       amount,
@@ -430,7 +622,7 @@ export default function App() {
       bankTemplateId: currentTemplate.id,
       bankName: currentTemplate.name,
       status: "printed",
-      printCount: newPrintCount,
+      printCount: copyNumber,
       isCrossed,
       crossedWithText,
       createdAt: existingRecord?.createdAt || now,
@@ -439,27 +631,42 @@ export default function App() {
       lastPrintedAt: now
     };
 
-    saveChequeRecord(printedRecord).catch(console.error);
+    await saveChequeRecord(printedRecord);
+    if (printedRecord.beneficiary && printedRecord.beneficiary !== "Bénéficiaire non spécifié") {
+      autoRecordBeneficiary(printedRecord.beneficiary).catch(console.error);
+    }
+
     setActiveChequeId(recordId);
     setActiveChequeStatus("printed");
-    setActivePrintCount(newPrintCount);
+    setActivePrintCount(copyNumber);
 
-    setHistory((prev) => {
-      const filtered = prev.filter((item) => item.id !== recordId);
-      return [printedRecord, ...filtered];
+    setHistory((prev) => [printedRecord, ...prev.filter((item) => item.id !== recordId)]);
+    setHistoryRefreshTrigger((n) => n + 1);
+    setPendingPrintConfirmation(null);
+
+    setToast({
+      message: copyNumber > 1
+        ? `Réimpression N°${copyNumber} confirmée avec succès.`
+        : "Impression physique validée et enregistrée avec succès.",
+      type: "success"
     });
+  };
+
+  const handlePostPrintFailure = async (reason: string) => {
+    if (!pendingPrintConfirmation) return;
+    const { attemptId } = pendingPrintConfirmation;
+    await updatePrintAttemptStatus(attemptId, "failed", { failureReason: reason });
+    setPendingPrintConfirmation(null);
     setHistoryRefreshTrigger((n) => n + 1);
 
     setToast({
-      message: newPrintCount > 1
-        ? `Réimpression N°${newPrintCount} enregistrée dans l'historique.`
-        : "Impression lancée et enregistrée dans l'historique.",
-      type: "success"
+      message: `Incident d'impression consigné (${reason}). Le chèque est conservé en brouillon.`,
+      type: "warning"
     });
+  };
 
-    setTimeout(() => {
-      window.print();
-    }, 200);
+  const handlePostPrintRetry = () => {
+    window.print();
   };
 
   // Handlers pour l'Historique
@@ -515,6 +722,22 @@ export default function App() {
     }
   };
 
+  const handleCreateChequeForBeneficiary = (beneficiaryName: string) => {
+    setBeneficiary(beneficiaryName);
+    setAmount("");
+    setActiveChequeId(null);
+    setActiveChequeStatus(null);
+    setActivePrintCount(0);
+    setActiveTab("home");
+    setToast({
+      message: `Bénéficiaire « ${beneficiaryName} » sélectionné. Saisissez le montant.`,
+      type: "info"
+    });
+    setTimeout(() => {
+      document.getElementById("amount-field")?.focus();
+    }, 120);
+  };
+
   const handleResetPositions = () => {
     if (window.confirm(`Réinitialiser les coordonnées du modèle "${currentTemplate.name}" ?`)) {
       setTemplates((prev) =>
@@ -559,8 +782,8 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      {/* 0. Écran de démarrage (Splash Screen) */}
-      {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+      {/* 0. Écran de démarrage (Virtanis Cheq) — lié au signal d'initialisation réel */}
+      {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} initReady={initReady} />}
 
       {/* 1. Barre supérieure */}
       <TopBar onOpenSettings={() => setActiveTab("settings")} />
@@ -597,11 +820,17 @@ export default function App() {
         ) : activeTab === "history" ? (
           <HistoryPage
             history={history}
+            templates={templates}
             refreshTrigger={historyRefreshTrigger}
             onCloneToHome={handleCloneToHome}
             onReprintCheque={handleReprintFromHistory}
             onDeleteRecord={handleDeleteHistoryRecord}
             onClearHistory={handleClearHistory}
+            onBackToHome={() => setActiveTab("home")}
+          />
+        ) : activeTab === "beneficiaries" ? (
+          <BeneficiariesPage
+            onCreateChequeForBeneficiary={handleCreateChequeForBeneficiary}
             onBackToHome={() => setActiveTab("home")}
           />
         ) : activeTab === "settings" ? (
@@ -623,16 +852,32 @@ export default function App() {
             {/* B. Zone centrale principale */}
             <main className="main-content-area">
               <div className="main-header">
-                <h1 className="page-title">Remplir un chèque</h1>
-                <p className="page-subtitle">Saisissez les informations du chèque et prévisualisez le résultat.</p>
+                <div className="header-main-title-row">
+                  <div>
+                    <div className="title-with-badge">
+                      <h1 className="history-main-title">Remplir un chèque</h1>
+                      <span
+                        className="db-badge"
+                        title="L'aperçu du chèque se met à jour instantanément à la saisie"
+                      >
+                        Aperçu en direct
+                      </span>
+                    </div>
+                    <p className="history-main-subtitle">
+                      Saisissez les informations du chèque et prévisualisez le résultat.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* Barre d'actions supérieure (Nouveau chèque, Enregistrer, Modifier, Imprimer) */}
               <ActionBar
                 onNew={handleNewCheque}
+                showNewButton={hasChequeData}
                 onEdit={handleEditFocus}
                 onSave={handleSave}
                 onPrint={handlePrint}
+                onExportPdf={() => handleExportPdf("exact-cheque")}
                 activeStatus={activeChequeStatus}
                 printCount={activePrintCount}
               />
@@ -727,7 +972,11 @@ export default function App() {
                     title={`Modèle actif : ${currentTemplate.name}\n(Cliquer pour développer)`}
                     aria-label={`Modèle : ${currentTemplate.name}`}
                   >
-                    <Building2 size={18} />
+                    {currentTemplate.logoUrl ? (
+                      <img src={currentTemplate.logoUrl} alt={currentTemplate.shortName} className="dock-bank-logo-img" />
+                    ) : (
+                      <Building2 size={18} />
+                    )}
                     <span className="dock-pill-tag">{currentTemplate.shortName}</span>
                   </button>
 
@@ -827,6 +1076,7 @@ export default function App() {
         isOpen={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
         onConfirmPrint={handleConfirmPrint}
+        onExportPdf={() => handleExportPdf("sheet")}
         settings={printSettings}
         onChangeSettings={setPrintSettings}
         currentTemplate={currentTemplate}
@@ -942,6 +1192,112 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Confirmation Nouveau Chèque (Protection des modifications non enregistrées) */}
+      {newChequeModalOpen && (
+        <div className="duplicate-modal-overlay" role="dialog" aria-modal="true">
+          <div className="duplicate-modal-content">
+            <div className="duplicate-modal-header">
+              <div className="duplicate-icon-box gold">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <h3 className="duplicate-modal-title">
+                  {activeChequeId
+                    ? "Enregistrer les modifications avant de créer un nouveau chèque ?"
+                    : "Enregistrer ce chèque avant de commencer un nouveau ?"}
+                </h3>
+                <p className="duplicate-modal-subtitle">
+                  {activeChequeId
+                    ? "Ce chèque a été modifié. Souhaitez-vous enregistrer vos modifications dans l'historique avant de repartir sur un chèque vierge ?"
+                    : "Le chèque en cours contient des informations non enregistrées. Souhaitez-vous le sauvegarder dans l'historique ?"}
+                </p>
+              </div>
+            </div>
+
+            <div className="duplicate-modal-body">
+              <div className="duplicate-record-card">
+                <div className="duplicate-detail-row">
+                  <span className="label">Bénéficiaire :</span>
+                  <span className="value">{beneficiary.trim() || "Bénéficiaire non spécifié"}</span>
+                </div>
+                <div className="duplicate-detail-row">
+                  <span className="label">Montant :</span>
+                  <span className="value">
+                    {formattedNumeric}
+                  </span>
+                </div>
+                <div className="duplicate-detail-row">
+                  <span className="label">Modèle Banque :</span>
+                  <span className="value">{currentTemplate.name}</span>
+                </div>
+                <div className="duplicate-detail-row">
+                  <span className="label">Date :</span>
+                  <span className="value">{date}</span>
+                </div>
+              </div>
+
+              <p className="duplicate-modal-question">
+                Que souhaitez-vous faire ?
+              </p>
+            </div>
+
+            <div className="duplicate-modal-actions">
+              <div className="duplicate-modal-actions-buttons">
+                {/* 1. Enregistrer / Mettre à jour puis ouvrir un nouveau */}
+                <button
+                  type="button"
+                  className="btn-duplicate-update"
+                  onClick={() => {
+                    const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
+                    if (!isNaN(rawVal) && rawVal > 0) {
+                      executeSave(activeChequeId || undefined);
+                    }
+                    executeNewCheque();
+                  }}
+                  title="Enregistrer et ouvrir un nouveau chèque vierge"
+                >
+                  <Save size={15} />
+                  <span>
+                    {activeChequeId ? "Mettre à jour et nouveau" : "Enregistrer et nouveau"}
+                  </span>
+                </button>
+
+                {/* 2. Abandonner les modifications et créer un nouveau */}
+                <button
+                  type="button"
+                  className="btn-duplicate-new btn-discard-danger"
+                  onClick={executeNewCheque}
+                  title="Abandonner les modifications actuelles et ouvrir un chèque vierge"
+                >
+                  Ignorer les modifications
+                </button>
+              </div>
+
+              {/* 3. Annuler et continuer l'édition */}
+              <button
+                type="button"
+                className="btn-duplicate-cancel"
+                onClick={() => setNewChequeModalOpen(false)}
+              >
+                Continuer l'édition
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Validation d'Impression Physique (Distinction demandé vs confirmé) */}
+      {pendingPrintConfirmation && (
+        <PrintConfirmationModal
+          isOpen={pendingPrintConfirmation.isOpen}
+          attemptId={pendingPrintConfirmation.attemptId}
+          chequeData={pendingPrintConfirmation.chequeData}
+          onConfirmSuccess={handlePostPrintSuccess}
+          onReportFailure={handlePostPrintFailure}
+          onRetryPrint={handlePostPrintRetry}
+        />
       )}
 
       {/* Dedicated Print Layer (Hidden on screen, exact 100% physical mm on printer) */}

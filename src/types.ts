@@ -19,6 +19,7 @@ export interface BankTemplate {
   width: number; // in mm (standard 175 - 180)
   height: number; // in mm (standard 80 - 85)
   positions: Positions;
+  logoUrl?: string; // Logo ou icône de la banque
   backgroundImage?: string;
   notes?: string;
   isCustom?: boolean;
@@ -39,6 +40,24 @@ export interface ChequeData {
 
 export type ChequeStatus = "saved" | "printed";
 
+export type PrintAttemptStatus = "requested" | "confirmed" | "failed" | "cancelled";
+
+export interface PrintAttemptRecord {
+  id: string;
+  chequeId: string;
+  beneficiary: string;
+  amount: string;
+  bankName: string;
+  bankTemplateId: string;
+  paperFormat: string;
+  placement: string;
+  status: PrintAttemptStatus;
+  attemptedAt: string;
+  confirmedAt?: string;
+  failureReason?: string;
+  copyNumber: number; // 1 = 1er tirage, 2+ = réimpression
+}
+
 export interface ChequeRecord {
   id: string;
   amount: string;
@@ -57,6 +76,18 @@ export interface ChequeRecord {
   printedAt?: string;
   lastPrintedAt?: string;
   printSettings?: PrintSettings;
+}
+
+export interface BeneficiaryRecord {
+  id: string;
+  name: string;
+  nickname?: string;
+  phone?: string;
+  note?: string;
+  usageCount: number;
+  lastUsedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export type PrintPlacement =

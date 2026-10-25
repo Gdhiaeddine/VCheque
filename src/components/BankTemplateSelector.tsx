@@ -17,6 +17,8 @@ export const BankTemplateSelector: React.FC<BankTemplateSelectorProps> = ({
 }) => {
   const [filterQuery, setFilterQuery] = useState("");
 
+  const selectedTemplate = templates.find((t) => t.id === selectedId) || templates[0];
+
   const filtered = templates.filter((t) =>
     t.name.toLowerCase().includes(filterQuery.toLowerCase()) ||
     t.shortName.toLowerCase().includes(filterQuery.toLowerCase())
@@ -32,6 +34,34 @@ export const BankTemplateSelector: React.FC<BankTemplateSelectorProps> = ({
         <span className="count-pill">{templates.length}</span>
       </div>
 
+      {/* Affichage du Logo et Informations de la Banque Active */}
+      {selectedTemplate && (
+        <div className="active-bank-showcase-box">
+          <div
+            className="showcase-logo-badge"
+            style={{
+              borderColor: selectedTemplate.themeColor || "var(--gold-border)",
+              backgroundColor: `${selectedTemplate.themeColor || "#AC8946"}15`
+            }}
+          >
+            {selectedTemplate.logoUrl ? (
+              <img src={selectedTemplate.logoUrl} alt={selectedTemplate.name} className="showcase-logo-img" />
+            ) : (
+              <Building2 size={24} style={{ color: selectedTemplate.themeColor || "var(--gold-primary)" }} />
+            )}
+          </div>
+          <div className="showcase-info">
+            <span className="showcase-badge-title">Banque active</span>
+            <strong className="showcase-bank-name" title={selectedTemplate.name}>
+              {selectedTemplate.name}
+            </strong>
+            <span className="showcase-bank-sub">
+              Code {selectedTemplate.bankCode || "—"} · {selectedTemplate.width} × {selectedTemplate.height} mm
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="bank-filter-wrapper">
         <Search size={14} className="filter-search-icon" />
         <input
@@ -46,7 +76,6 @@ export const BankTemplateSelector: React.FC<BankTemplateSelectorProps> = ({
       <div className="bank-templates-list">
         {filtered.map((tpl) => {
           const isSelected = tpl.id === selectedId;
-          const isAlSalam = tpl.id === "el-salam";
 
           return (
             <button
@@ -63,7 +92,11 @@ export const BankTemplateSelector: React.FC<BankTemplateSelectorProps> = ({
                   borderColor: isSelected ? tpl.themeColor : "transparent"
                 }}
               >
-                {tpl.shortName.slice(0, 3)}
+                {tpl.logoUrl ? (
+                  <img src={tpl.logoUrl} alt={tpl.shortName} className="bank-logo-row-img" />
+                ) : (
+                  tpl.shortName.slice(0, 3)
+                )}
               </div>
 
               <div className="bank-item-details">

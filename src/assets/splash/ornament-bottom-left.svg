@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" fill="none">
+  <defs>
+    <linearGradient id="ornGradBL" x1="1" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#E4C77D"/>
+      <stop offset="1" stop-color="#8C682C"/>
+    </linearGradient>
+  </defs>
+  <!-- same motif as the top-right ornament, rotated 180° for the lower-left corner -->
+  <g stroke="url(#ornGradBL)" stroke-width="1.1" fill="none" transform="rotate(180 110 110)">
+    <path d="M132 0 A88 88 0 0 0 220 88" opacity="0.5"/>
+    <path d="M104 0 A116 116 0 0 0 220 116" opacity="0.3"/>
+    <path d="M76 0 A144 144 0 0 0 220 144" opacity="0.16"/>
+    <line x1="220" y1="0" x2="112" y2="108" opacity="0.35"/>
+    <line x1="220" y1="24" x2="146" y2="98" opacity="0.22"/>
+    <path d="M185 26 L194 35 L185 44 L176 35 Z" opacity="0.45"/>
+    <path d="M150 61 L159 70 L150 79 L141 70 Z" opacity="0.3"/>
+    <path d="M220 34 H202 M204 52 H184" opacity="0.28"/>
+    <path d="M182 0 H198 V16" opacity="0.3"/>
+  </g>
+</svg>
