@@ -5080,3 +5080,227 @@ button {
   cursor: pointer;
   margin: 0;
 }
+
+
+/* ==========================================================================
+   TOPBAR LAYOUT CONTROLS & SIDEBARS PLIABLES (ICÔNES SEULES)
+   ========================================================================== */
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-layout-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.topbar-layout-btn:hover {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+/* 1. Sidebar Gauche */
+.app-sidebar {
+  transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1), padding 200ms ease;
+}
+
+.sidebar-collapse-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 0 4px;
+}
+
+.sidebar-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.sidebar-toggle-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sidebar-toggle-btn:hover {
+  background-color: rgba(172, 137, 70, 0.1);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.app-sidebar.collapsed {
+  width: 66px;
+  padding: 16px 8px;
+}
+
+.app-sidebar.collapsed .sidebar-collapse-row {
+  justify-content: center;
+  margin-bottom: 12px;
+  padding: 0;
+}
+
+.app-sidebar.collapsed .sidebar-nav-btn {
+  justify-content: center;
+  padding: 10px 0;
+  width: 100%;
+}
+
+.app-sidebar.collapsed .sidebar-nav-btn.active::before {
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+}
+
+.app-sidebar.collapsed .sidebar-footer {
+  padding-top: 10px;
+}
+
+/* 2. Volet Outils Droit */
+.right-panel-column {
+  transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1), padding 200ms ease;
+}
+
+.right-panel-column.collapsed {
+  width: 66px;
+  padding: 14px 8px;
+  overflow-x: hidden;
+}
+
+.right-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.right-panel-column.collapsed .right-panel-header {
+  justify-content: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+}
+
+.right-panel-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+}
+
+.right-panel-toggle-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.right-panel-toggle-btn:hover {
+  background-color: rgba(172, 137, 70, 0.1);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+/* Dock vertical d'icônes pour le panneau droit réduit */
+.right-panel-dock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.right-dock-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-subtle);
+  position: relative;
+}
+
+.right-dock-btn:hover {
+  background-color: rgba(172, 137, 70, 0.1);
+  border-color: var(--gold-border);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.right-dock-btn.active {
+  background-color: rgba(172, 137, 70, 0.16);
+  border-color: var(--gold-primary);
+  color: var(--gold-dark);
+}
+
+.right-dock-btn.bank-dock-btn {
+  border-color: rgba(172, 137, 70, 0.35);
+}
+
+.dock-pill-tag {
+  font-size: 8px;
+  font-weight: 800;
+  color: var(--gold-dark);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.dock-mini-text {
+  font-size: 8.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.right-dock-btn.test-print-btn:hover {
+  background-color: rgba(62, 121, 89, 0.1);
+  border-color: var(--green-positive);
+  color: var(--green-positive);
+}
+
+.dock-separator {
+  width: 32px;
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 4px 0;
+}

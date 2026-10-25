@@ -17,7 +17,22 @@ import { SplashScreen } from "./components/SplashScreen";
 import { saveChequeRecord, findDuplicateCheque } from "./services/db";
 import { loadTemplatesFromConfigFile, saveTemplatesToConfigFile } from "./services/templatesConfig";
 import { loadAppSettings, saveAppSettings, resetAppSettings } from "./services/appSettings";
-import { CheckCircle2, AlertCircle, Info, X, AlertTriangle, RefreshCw } from "lucide-react";
+import {
+  CheckCircle2,
+  AlertCircle,
+  Info,
+  X,
+  AlertTriangle,
+  RefreshCw,
+  PanelRightClose,
+  PanelRightOpen,
+  Eye,
+  EyeOff,
+  Building2,
+  Sliders,
+  Printer,
+  ZoomIn
+} from "lucide-react";
 
 const STORAGE_KEY = "cheque-studio-models-v6";
 const PRINT_SETTINGS_KEY = "cheque-studio-print-settings-v1";
@@ -57,6 +72,47 @@ export default function App() {
   const [showGuides, setShowGuides] = useState<boolean>(true);
   const [scale, setScale] = useState<number>(100);
   const [activeTab, setActiveTab] = useState<NavTab>("home");
+
+  // Sidebar Layout States (Persistants pour confort utilisateur)
+  const [isLeftCollapsed, setIsLeftCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("vcheque_left_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const [isRightCollapsed, setIsRightCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("vcheque_right_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("vcheque_left_collapsed", String(isLeftCollapsed));
+    } catch {}
+  }, [isLeftCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("vcheque_right_collapsed", String(isRightCollapsed));
+    } catch {}
+  }, [isRightCollapsed]);
+
+  // Raccourci clavier Ctrl+B pour masquer/afficher le menu latéral
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
+        e.preventDefault();
+        setIsLeftCollapsed((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
 
   // 3. Print Dialog & Layout State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
@@ -507,12 +563,24 @@ export default function App() {
       {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
 
       {/* 1. Barre supérieure */}
-      <TopBar onOpenSettings={() => setActiveTab("settings")} />
+      <TopBar
+        onOpenSettings={() => setActiveTab("settings")}
+        isLeftCollapsed={isLeftCollapsed}
+        onToggleLeft={() => setIsLeftCollapsed((v) => !v)}
+        isRightCollapsed={isRightCollapsed}
+        onToggleRight={() => setIsRightCollapsed((v) => !v)}
+        showRightToggle={activeTab === "home"}
+      />
 
       {/* 2. Corps de l'application (Barre latérale + Zone centrale + Colonne droite) */}
       <div className="app-body">
         {/* A. Barre latérale gauche */}
-        <Sidebar activeTab={activeTab} onSelectTab={(tab) => setActiveTab(tab)} />
+        <Sidebar
+          activeTab={activeTab}
+          onSelectTab={(tab) => setActiveTab(tab)}
+          isCollapsed={isLeftCollapsed}
+          onToggleCollapse={() => setIsLeftCollapsed((v) => !v)}
+        />
 
         {activeTab === "templates" ? (
           <BankTemplatesPage
@@ -638,26 +706,111 @@ export default function App() {
             </main>
 
             {/* C. Colonne droite (Modèles bancaires & Calibrage) */}
-            <aside className="right-panel-column">
-              <BankTemplateSelector
-                templates={templates}
-                selectedId={selectedTemplateId}
-                onSelectTemplate={setSelectedTemplateId}
-                onOpenManageTemplates={() => setActiveTab("templates")}
-              />
+            <aside className={`right-panel-column ${isRightCollapsed ? "collapsed" : ""}`}>
+              {/* En-tête avec bouton de réduction */}
+              <div className="right-panel-header">
+                {!isRightCollapsed && (
+                  <span className="right-panel-title">Outils & Calibrage</span>
+                )}
+                <button
+                  type="button"
+                  className="right-panel-toggle-btn"
+                  onClick={() => setIsRightCollapsed((prev) => !prev)}
+                  title={isRightCollapsed ? "Développer le volet (Outils & Calibrage)" : "Réduire le volet (icônes seules)"}
+                  aria-label={isRightCollapsed ? "Développer le volet" : "Réduire le volet"}
+                >
+                  {isRightCollapsed ? <PanelRightOpen size={18} /> : <PanelRightClose size={18} />}
+                </button>
+              </div>
 
-              <CalibrationPanel
-                currentTemplate={currentTemplate}
-                activeField={activeField}
-                onSelectField={setActiveField}
-                onUpdatePosition={handleUpdateFieldPosition}
-                onResetPositions={handleResetPositions}
-                showGuides={showGuides}
-                onToggleGuides={() => setShowGuides((v) => !v)}
-                scale={scale}
-                onChangeScale={setScale}
-                onPrintTestPage={handlePrintTestPage}
-              />
+              {isRightCollapsed ? (
+                /* Mode compact : Dock d'icônes avec raccourcis rapides */
+                <div className="right-panel-dock">
+                  {/* Modèle de banque actif */}
+                  <button
+                    type="button"
+                    className="right-dock-btn bank-dock-btn"
+                    onClick={() => setIsRightCollapsed(false)}
+                    title={`Modèle actif : ${currentTemplate.name}\n(Cliquer pour développer)`}
+                    aria-label={`Modèle : ${currentTemplate.name}`}
+                  >
+                    <Building2 size={18} />
+                    <span className="dock-pill-tag">{currentTemplate.shortName}</span>
+                  </button>
+
+                  <div className="dock-separator" />
+
+                  {/* Toggle Repères visuels */}
+                  <button
+                    type="button"
+                    className={`right-dock-btn ${showGuides ? "active" : ""}`}
+                    onClick={() => setShowGuides((v) => !v)}
+                    title={showGuides ? "Masquer la grille et les repères mm" : "Afficher la grille et les repères mm"}
+                    aria-label="Repères visuels"
+                  >
+                    {showGuides ? <Eye size={18} /> : <EyeOff size={18} />}
+                  </button>
+
+                  {/* Calibrage des coordonnées */}
+                  <button
+                    type="button"
+                    className="right-dock-btn"
+                    onClick={() => setIsRightCollapsed(false)}
+                    title="Calibrage précis des coordonnées (Cliquer pour ouvrir)"
+                    aria-label="Calibrage"
+                  >
+                    <Sliders size={18} />
+                  </button>
+
+                  {/* Zoom / Échelle rapide */}
+                  <button
+                    type="button"
+                    className="right-dock-btn"
+                    onClick={() => setScale((s) => (s >= 120 ? 80 : s + 20))}
+                    title={`Zoom aperçu : ${scale}%\n(Cliquer pour modifier)`}
+                    aria-label="Zoom"
+                  >
+                    <ZoomIn size={18} />
+                    <span className="dock-mini-text">{scale}%</span>
+                  </button>
+
+                  <div className="dock-separator" />
+
+                  {/* Impression feuille de test */}
+                  <button
+                    type="button"
+                    className="right-dock-btn test-print-btn"
+                    onClick={handlePrintTestPage}
+                    title="Imprimer une feuille de test de calibrage"
+                    aria-label="Imprimer feuille test"
+                  >
+                    <Printer size={18} />
+                  </button>
+                </div>
+              ) : (
+                /* Mode complet */
+                <div className="right-panel-content">
+                  <BankTemplateSelector
+                    templates={templates}
+                    selectedId={selectedTemplateId}
+                    onSelectTemplate={setSelectedTemplateId}
+                    onOpenManageTemplates={() => setActiveTab("templates")}
+                  />
+
+                  <CalibrationPanel
+                    currentTemplate={currentTemplate}
+                    activeField={activeField}
+                    onSelectField={setActiveField}
+                    onUpdatePosition={handleUpdateFieldPosition}
+                    onResetPositions={handleResetPositions}
+                    showGuides={showGuides}
+                    onToggleGuides={() => setShowGuides((v) => !v)}
+                    scale={scale}
+                    onChangeScale={setScale}
+                    onPrintTestPage={handlePrintTestPage}
+                  />
+                </div>
+              )}
             </aside>
           </>
         )}
