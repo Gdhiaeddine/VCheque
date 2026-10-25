@@ -34,6 +34,7 @@ export interface ChequeData {
   date: string;
   chequeNumber?: string;
   isCrossed: boolean; // Chèque barré
+  crossedWithText?: boolean; // Mention "Non endossable" entre les barres
 }
 
 export type ChequeStatus = "saved" | "printed";
@@ -49,9 +50,12 @@ export interface ChequeRecord {
   bankName: string;
   status: ChequeStatus;
   isCrossed?: boolean;
+  crossedWithText?: boolean;
+  printCount?: number; // 0 = sauvegardé, 1 = imprimé, 2+ = réimprimé
   createdAt: string;
   updatedAt?: string;
   printedAt?: string;
+  lastPrintedAt?: string;
   printSettings?: PrintSettings;
 }
 
@@ -101,5 +105,6 @@ export interface AppSettings {
   // Préférences par défaut
   defaultPlace: string;
   defaultIsCrossed: boolean;
+  defaultCrossedWithText?: boolean;
   defaultTemplateId?: string;
 }

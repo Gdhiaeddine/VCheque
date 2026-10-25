@@ -373,7 +373,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                         {item.status === "printed" ? (
                           <>
                             <CheckCircle2 size={13} />
-                            <span>Imprimé</span>
+                            <span>Imprimé {item.printCount && item.printCount > 1 ? `(x${item.printCount})` : ""}</span>
                           </>
                         ) : (
                           <>
@@ -389,8 +389,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                       </span>
 
                       {item.isCrossed !== false && (
-                        <span className="cheque-barre-badge" title="Chèque barré (Non endossable)">
-                          // Barré
+                        <span
+                          className="cheque-barre-badge"
+                          title={item.crossedWithText !== false ? "Chèque barré — Non endossable" : "Chèque barré simple (sans mention)"}
+                        >
+                          {item.crossedWithText !== false ? "// Barré (Non endossable)" : "// Barré simple"}
                         </span>
                       )}
                     </div>

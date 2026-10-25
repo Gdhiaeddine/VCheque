@@ -4830,3 +4830,252 @@ button {
   border-radius: 99px;
   transition: width 80ms ease-out;
 }
+
+
+/* ==========================================================================
+   STATUT DU CHÈQUE ACTIF & PRÉVENTION DES DOUBLONS
+   ========================================================================== */
+
+.active-cheque-badge-wrapper {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.active-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+}
+
+.active-status-indicator.saved {
+  background-color: rgba(217, 119, 6, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+.active-status-indicator.printed {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.btn-new-cheque {
+  border-color: rgba(212, 175, 55, 0.35) !important;
+  color: var(--gold-primary) !important;
+}
+
+.btn-new-cheque:hover {
+  background-color: rgba(212, 175, 55, 0.1) !important;
+}
+
+/* Modal d'Avertissement de Doublon */
+.duplicate-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(18, 18, 18, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 20px;
+}
+
+.duplicate-modal-content {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg, 12px);
+  width: 100%;
+  max-width: 520px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.duplicate-modal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.duplicate-icon-box {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.duplicate-modal-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.duplicate-modal-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.45;
+}
+
+.duplicate-modal-body {
+  padding: 18px 22px;
+}
+
+.duplicate-record-card {
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.duplicate-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.duplicate-detail-row .label {
+  color: var(--text-muted, #8c8577);
+}
+
+.duplicate-detail-row .value {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.duplicate-modal-question {
+  font-size: 13.5px;
+  color: var(--text-primary);
+  font-weight: 500;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.duplicate-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 22px 20px;
+  background: rgba(0, 0, 0, 0.05);
+  border-top: 1px solid var(--border-color);
+}
+
+.duplicate-modal-actions-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn-duplicate-update {
+  background: var(--gold-primary);
+  color: #000;
+  font-weight: 600;
+  padding: 9px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.btn-duplicate-update:hover {
+  filter: brightness(1.1);
+}
+
+.btn-duplicate-new {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  font-weight: 500;
+  padding: 9px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.btn-duplicate-new:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.btn-duplicate-cancel {
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 4px 8px;
+  text-align: right;
+  align-self: flex-end;
+}
+
+.btn-duplicate-cancel:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   SOUS-OPTIONS CHÈQUE BARRÉ : AVEC OU SANS MENTION NON ENDOSSABLE
+   ========================================================================== */
+
+.crossed-control-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.crossed-suboptions-row {
+  display: flex;
+  align-items: center;
+  background-color: var(--bg-secondary, #f8f8f6);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm, 6px);
+  padding: 4px 10px;
+  animation: fadeIn 150ms ease-out;
+}
+
+.crossed-subtoggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  width: 100%;
+}
+
+.crossed-subtoggle-label span {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.crossed-subcheckbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--gold-primary);
+  cursor: pointer;
+  margin: 0;
+}

@@ -64,14 +64,26 @@ export async function getDatabase(): Promise<Database | null> {
         bank_name TEXT NOT NULL,
         status TEXT NOT NULL,
         is_crossed INTEGER DEFAULT 1,
+        crossed_with_text INTEGER DEFAULT 1,
+        print_count INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT,
-        printed_at TEXT
+        printed_at TEXT,
+        last_printed_at TEXT
       );
     `);
 
     try {
       await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN is_crossed INTEGER DEFAULT 1;`);
+    } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN crossed_with_text INTEGER DEFAULT 1;`);
+    } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN print_count INTEGER DEFAULT 0;`);
+    } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN last_printed_at TEXT;`);
     } catch {}
 
     // 2. Index pour accélérer le tri et la pagination
@@ -208,7 +220,10 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
         id, amount, amount_numeric, beneficiary, place, date, cheque_number as chequeNumber,
         bank_template_id as bankTemplateId, bank_name as bankName, status,
         COALESCE(is_crossed, 1) = 1 as isCrossed,
-        created_at as createdAt, updated_at as updatedAt, printed_at as printedAt
+        COALESCE(crossed_with_text, 1) = 1 as crossedWithText,
+        COALESCE(print_count, CASE WHEN status = 'printed' THEN 1 ELSE 0 END) as printCount,
+        created_at as createdAt, updated_at as updatedAt, printed_at as printedAt,
+        last_printed_at as lastPrintedAt
       FROM cheques 
       ${whereClause}
       ORDER BY created_at DESC 
@@ -243,11 +258,13 @@ export async function saveChequeRecord(record: ChequeRecord): Promise<void> {
   if (!db) return;
 
   const rawVal = parseFloat((record.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+  const count = typeof record.printCount === "number" ? record.printCount : (record.status === "printed" ? 1 : 0);
+
   await db.execute(
     `INSERT OR REPLACE INTO cheques (
       id, amount, amount_numeric, beneficiary, place, date, cheque_number,
-      bank_template_id, bank_name, status, is_crossed, created_at, updated_at, printed_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
+      bank_template_id, bank_name, status, is_crossed, crossed_with_text, print_count, created_at, updated_at, printed_at, last_printed_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);`,
     [
       record.id,
       record.amount,
@@ -260,11 +277,78 @@ export async function saveChequeRecord(record: ChequeRecord): Promise<void> {
       record.bankName,
       record.status,
       record.isCrossed !== false ? 1 : 0,
+      record.crossedWithText !== false ? 1 : 0,
+      count,
       record.createdAt,
       record.updatedAt || null,
-      record.printedAt || null
+      record.printedAt || null,
+      record.lastPrintedAt || record.printedAt || null
     ]
   );
+}
+
+/**
+ * Recherche si un chèque identique existe déjà (même bénéficiaire, montant, banque et date)
+ */
+export async function findDuplicateCheque(params: {
+  amount: string;
+  beneficiary: string;
+  date: string;
+  bankTemplateId: string;
+  excludeId?: string | null;
+}): Promise<ChequeRecord | null> {
+  const normBeneficiary = params.beneficiary.trim().toLowerCase();
+  const normAmount = params.amount.replace(/\s/g, "").replace(",", ".");
+  const numericAmount = parseFloat(normAmount) || 0;
+
+  if (!normBeneficiary || numericAmount <= 0) {
+    return null;
+  }
+
+  const db = await getDatabase();
+  if (db) {
+    try {
+      const sql = `
+        SELECT 
+          id, amount, amount_numeric, beneficiary, place, date, cheque_number as chequeNumber,
+          bank_template_id as bankTemplateId, bank_name as bankName, status,
+          COALESCE(is_crossed, 1) = 1 as isCrossed,
+          COALESCE(print_count, CASE WHEN status = 'printed' THEN 1 ELSE 0 END) as printCount,
+          created_at as createdAt, updated_at as updatedAt, printed_at as printedAt,
+          last_printed_at as lastPrintedAt
+        FROM cheques
+        WHERE LOWER(TRIM(beneficiary)) = ?
+          AND bank_template_id = ?
+          AND date = ?
+          AND ABS(amount_numeric - ?) < 0.001
+          ${params.excludeId ? "AND id != ?" : ""}
+        ORDER BY created_at DESC
+        LIMIT 1;
+      `;
+      const queryParams = params.excludeId 
+        ? [normBeneficiary, params.bankTemplateId, params.date, numericAmount, params.excludeId]
+        : [normBeneficiary, params.bankTemplateId, params.date, numericAmount];
+
+      const res = await db.select<ChequeRecord[]>(sql, queryParams);
+      if (res && res.length > 0) return res[0];
+    } catch (e) {
+      console.warn("Erreur recherche doublon SQLite:", e);
+    }
+  }
+
+  // Fallback localStorage
+  const list = getLocalRecords();
+  const found = list.find((item) => {
+    if (params.excludeId && item.id === params.excludeId) return false;
+    const sameBeneficiary = (item.beneficiary || "").trim().toLowerCase() === normBeneficiary;
+    const sameBank = item.bankTemplateId === params.bankTemplateId;
+    const sameDate = item.date === params.date;
+    const itemNum = parseFloat((item.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+    const sameAmount = Math.abs(itemNum - numericAmount) < 0.001;
+    return sameBeneficiary && sameBank && sameDate && sameAmount;
+  });
+
+  return found || null;
 }
 
 /**

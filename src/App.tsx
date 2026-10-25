@@ -14,10 +14,10 @@ import { defaultBankTemplates, defaultPositions } from "./banksData";
 import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, AppSettings } from "./types";
 import { PrintModal, getPaperDimensions, calculateChequePosition } from "./components/PrintModal";
 import { SplashScreen } from "./components/SplashScreen";
-import { saveChequeRecord } from "./services/db";
+import { saveChequeRecord, findDuplicateCheque } from "./services/db";
 import { loadTemplatesFromConfigFile, saveTemplatesToConfigFile } from "./services/templatesConfig";
 import { loadAppSettings, saveAppSettings, resetAppSettings } from "./services/appSettings";
-import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
+import { CheckCircle2, AlertCircle, Info, X, AlertTriangle, RefreshCw } from "lucide-react";
 
 const STORAGE_KEY = "cheque-studio-models-v6";
 const PRINT_SETTINGS_KEY = "cheque-studio-print-settings-v1";
@@ -36,6 +36,7 @@ export default function App() {
   const [place, setPlace] = useState<string>(() => loadAppSettings().defaultPlace || "Alger");
   const [date, setDate] = useState<string>("2026-10-19");
   const [isCrossed, setIsCrossed] = useState<boolean>(() => loadAppSettings().defaultIsCrossed !== false);
+  const [crossedWithText, setCrossedWithText] = useState<boolean>(() => loadAppSettings().defaultCrossedWithText !== false);
 
   // 2. Templates & Calibration State
   const [templates, setTemplates] = useState<BankTemplate[]>(() => {
@@ -87,7 +88,19 @@ export default function App() {
     return [];
   });
 
-  // 5. Feedback / Toast
+  // 5. Active Cheque tracking (Évite les doublons lors de l'enregistrement ou de la réimpression)
+  const [activeChequeId, setActiveChequeId] = useState<string | null>(null);
+  const [activeChequeStatus, setActiveChequeStatus] = useState<"saved" | "printed" | null>(null);
+  const [activePrintCount, setActivePrintCount] = useState<number>(0);
+
+  // Modal d'alerte doublon
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    isOpen: boolean;
+    duplicateRecord: ChequeRecord;
+    action: "save" | "print";
+  } | null>(null);
+
+  // 6. Feedback / Toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null);
 
   // Persist history
@@ -219,38 +232,118 @@ export default function App() {
     setToast({ message: "Saisie activée. Modifiez vos informations.", type: "info" });
   };
 
-  const handleSave = () => {
-    const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
-    if (isNaN(rawVal) || rawVal <= 0) {
-      setToast({ message: "Veuillez saisir un montant valide avant d'enregistrer le chèque.", type: "warning" });
-      return;
-    }
+  const handleNewCheque = () => {
+    setAmount("");
+    setBeneficiary("");
+    setPlace(appSettings.defaultPlace || "Alger");
+    setDate(new Date().toISOString().split("T")[0]);
+    setIsCrossed(appSettings.defaultIsCrossed !== false);
+    setCrossedWithText(appSettings.defaultCrossedWithText !== false);
+    setActiveChequeId(null);
+    setActiveChequeStatus(null);
+    setActivePrintCount(0);
+    setToast({ message: "Nouveau chèque vierge prêt pour la saisie.", type: "info" });
+  };
 
+  const executeSave = (targetId?: string) => {
+    const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
     const now = new Date().toISOString();
+    const recordId = targetId || activeChequeId || ("cheque-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7));
+    const isExisting = Boolean(targetId || activeChequeId);
+    const existingRecord = history.find((h) => h.id === recordId);
+
     const newRecord: ChequeRecord = {
-      id: "cheque-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+      id: recordId,
       amount,
       beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
       place: place.trim() || "Alger",
       date: date || new Date().toISOString().split("T")[0],
       bankTemplateId: currentTemplate.id,
       bankName: currentTemplate.name,
-      status: "saved",
+      status: isExisting && (activeChequeStatus === "printed" || existingRecord?.status === "printed") ? "printed" : "saved",
+      printCount: existingRecord?.printCount ?? activePrintCount,
       isCrossed,
-      createdAt: now,
-      updatedAt: now
+      crossedWithText,
+      createdAt: existingRecord?.createdAt || now,
+      updatedAt: now,
+      printedAt: existingRecord?.printedAt,
+      lastPrintedAt: existingRecord?.lastPrintedAt
     };
 
     saveChequeRecord(newRecord).catch(console.error);
-    setHistory((prev) => [newRecord, ...prev]);
+    setActiveChequeId(recordId);
+    setActiveChequeStatus(newRecord.status);
+    setActivePrintCount(newRecord.printCount || 0);
+
+    setHistory((prev) => {
+      const filtered = prev.filter((item) => item.id !== recordId);
+      return [newRecord, ...filtered];
+    });
     setHistoryRefreshTrigger((n) => n + 1);
+
     setToast({
-      message: `Chèque enregistré avec succès dans l'Historique (${rawVal.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DZD).`,
+      message: isExisting
+        ? `Chèque mis à jour dans l'Historique (${rawVal.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DZD).`
+        : `Chèque enregistré avec succès dans l'Historique (${rawVal.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DZD).`,
       type: "success"
     });
   };
 
-  const handlePrint = () => {
+  const handleSave = async () => {
+    const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
+    if (isNaN(rawVal) || rawVal <= 0) {
+      setToast({ message: "Veuillez saisir un montant valide avant d'enregistrer le chèque.", type: "warning" });
+      return;
+    }
+
+    // Si aucun ID actif, rechercher si un chèque identique existe déjà dans l'historique
+    if (!activeChequeId) {
+      const duplicate = await findDuplicateCheque({
+        amount,
+        beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
+        date: date || new Date().toISOString().split("T")[0],
+        bankTemplateId: currentTemplate.id
+      });
+
+      if (duplicate) {
+        setDuplicateWarning({
+          isOpen: true,
+          duplicateRecord: duplicate,
+          action: "save"
+        });
+        return;
+      }
+    }
+
+    executeSave();
+  };
+
+  const handlePrint = async () => {
+    const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
+    if (isNaN(rawVal) || rawVal <= 0) {
+      setToast({ message: "Veuillez saisir un montant valide avant d'imprimer.", type: "warning" });
+      return;
+    }
+
+    // Si aucun ID actif, rechercher si un chèque identique existe déjà dans l'historique
+    if (!activeChequeId) {
+      const duplicate = await findDuplicateCheque({
+        amount,
+        beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
+        date: date || new Date().toISOString().split("T")[0],
+        bankTemplateId: currentTemplate.id
+      });
+
+      if (duplicate) {
+        setDuplicateWarning({
+          isOpen: true,
+          duplicateRecord: duplicate,
+          action: "print"
+        });
+        return;
+      }
+    }
+
     setIsPrintModalOpen(true);
   };
 
@@ -266,10 +359,14 @@ export default function App() {
   const handleConfirmPrint = () => {
     setIsPrintModalOpen(false);
 
-    // Enregistrer automatiquement le chèque dans l'historique avec le statut 'imprimé'
     const now = new Date().toISOString();
+    const recordId = activeChequeId || ("cheque-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7));
+    const existingRecord = history.find((h) => h.id === recordId);
+
+    const newPrintCount = (existingRecord?.printCount || activePrintCount || 0) + 1;
+
     const printedRecord: ChequeRecord = {
-      id: "cheque-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+      id: recordId,
       amount,
       beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
       place: place.trim() || "Alger",
@@ -277,18 +374,33 @@ export default function App() {
       bankTemplateId: currentTemplate.id,
       bankName: currentTemplate.name,
       status: "printed",
+      printCount: newPrintCount,
       isCrossed,
-      createdAt: now,
-      printedAt: now
+      crossedWithText,
+      createdAt: existingRecord?.createdAt || now,
+      updatedAt: now,
+      printedAt: existingRecord?.printedAt || now,
+      lastPrintedAt: now
     };
+
     saveChequeRecord(printedRecord).catch(console.error);
-    setHistory((prev) => [printedRecord, ...prev]);
+    setActiveChequeId(recordId);
+    setActiveChequeStatus("printed");
+    setActivePrintCount(newPrintCount);
+
+    setHistory((prev) => {
+      const filtered = prev.filter((item) => item.id !== recordId);
+      return [printedRecord, ...filtered];
+    });
     setHistoryRefreshTrigger((n) => n + 1);
 
     setToast({
-      message: "Impression lancée et archivée dans l'historique.",
+      message: newPrintCount > 1
+        ? `Réimpression N°${newPrintCount} enregistrée dans l'historique.`
+        : "Impression lancée et enregistrée dans l'historique.",
       type: "success"
     });
+
     setTimeout(() => {
       window.print();
     }, 200);
@@ -301,13 +413,17 @@ export default function App() {
     setPlace(record.place);
     setDate(record.date);
     setIsCrossed(record.isCrossed !== false);
+    setCrossedWithText(record.crossedWithText !== false);
     if (templates.some((t) => t.id === record.bankTemplateId)) {
       setSelectedTemplateId(record.bankTemplateId);
     }
+    setActiveChequeId(record.id);
+    setActiveChequeStatus(record.status);
+    setActivePrintCount(record.printCount || (record.status === "printed" ? 1 : 0));
     setActiveTab("home");
     setToast({
-      message: `Chèque pour "${record.beneficiary}" cloné vers l'Accueil pour modification.`,
-      type: "success"
+      message: `Chèque chargé pour modification (ID existant conservé).`,
+      type: "info"
     });
   };
 
@@ -317,9 +433,13 @@ export default function App() {
     setPlace(record.place);
     setDate(record.date);
     setIsCrossed(record.isCrossed !== false);
+    setCrossedWithText(record.crossedWithText !== false);
     if (templates.some((t) => t.id === record.bankTemplateId)) {
       setSelectedTemplateId(record.bankTemplateId);
     }
+    setActiveChequeId(record.id);
+    setActiveChequeStatus(record.status);
+    setActivePrintCount(record.printCount || 1);
     setIsPrintModalOpen(true);
     setToast({
       message: `Réimpression du chèque pour "${record.beneficiary}".`,
@@ -460,6 +580,8 @@ export default function App() {
                   words={words}
                   isCrossed={isCrossed}
                   onChangeIsCrossed={setIsCrossed}
+                  crossedWithText={crossedWithText}
+                  onChangeCrossedWithText={setCrossedWithText}
                   onSubmit={handleSubmitForm}
                 />
 
@@ -472,6 +594,7 @@ export default function App() {
                   place={place}
                   date={date}
                   isCrossed={isCrossed}
+                  crossedWithText={crossedWithText}
                   formattedNumeric={formattedNumeric}
                   activeField={activeField}
                   onSelectField={setActiveField}
@@ -484,9 +607,12 @@ export default function App() {
 
               {/* Barre d'actions inférieure (Imprimer le chèque, Enregistrer, Modifier) */}
               <ActionBar
+                onNew={handleNewCheque}
                 onEdit={handleEditFocus}
                 onSave={handleSave}
                 onPrint={handlePrint}
+                activeStatus={activeChequeStatus}
+                printCount={activePrintCount}
               />
 
               {/* Pied de page espace de travail (Footer) */}
@@ -562,8 +688,115 @@ export default function App() {
         beneficiary={beneficiary}
         date={date}
         isCrossed={isCrossed}
+        crossedWithText={crossedWithText}
         formattedNumeric={formattedNumeric}
+        isReprint={activeChequeStatus === "printed" || activePrintCount > 0}
+        printCount={activePrintCount}
       />
+
+      {/* Modal d'Avertissement de Doublon (Meilleure pratique bancaire) */}
+      {duplicateWarning && (
+        <div className="duplicate-modal-overlay" role="dialog" aria-modal="true">
+          <div className="duplicate-modal-content">
+            <div className="duplicate-modal-header">
+              <div className="duplicate-icon-box">
+                <AlertTriangle size={22} />
+              </div>
+              <div>
+                <h3 className="duplicate-modal-title">Chèque identique détecté dans l'historique</h3>
+                <p className="duplicate-modal-subtitle">
+                  Un chèque avec les mêmes coordonnées (Montant, Bénéficiaire, Banque, Date) a déjà été enregistré ou imprimé.
+                </p>
+              </div>
+            </div>
+
+            <div className="duplicate-modal-body">
+              <div className="duplicate-record-card">
+                <div className="duplicate-detail-row">
+                  <span className="label">Bénéficiaire :</span>
+                  <span className="value">{duplicateWarning.duplicateRecord.beneficiary}</span>
+                </div>
+                <div className="duplicate-detail-row">
+                  <span className="label">Montant :</span>
+                  <span className="value">
+                    {Number(duplicateWarning.duplicateRecord.amount.replace(/\s/g, "").replace(",", ".")).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DZD
+                  </span>
+                </div>
+                <div className="duplicate-detail-row">
+                  <span className="label">Banque :</span>
+                  <span className="value">{duplicateWarning.duplicateRecord.bankName}</span>
+                </div>
+                <div className="duplicate-detail-row">
+                  <span className="label">Statut actuel :</span>
+                  <span className="value">
+                    {duplicateWarning.duplicateRecord.status === "printed"
+                      ? `Imprimé (x${duplicateWarning.duplicateRecord.printCount || 1})`
+                      : "Enregistré (brouillon)"}
+                  </span>
+                </div>
+              </div>
+
+              <p className="duplicate-modal-question">
+                Souhaitez-vous réimprimer / mettre à jour ce chèque sans créer de doublon dans l'historique, ou émettre un nouveau chèque distinct ?
+              </p>
+            </div>
+
+            <div className="duplicate-modal-actions">
+              <div className="duplicate-modal-actions-buttons">
+                <button
+                  type="button"
+                  className="btn-duplicate-new"
+                  onClick={() => {
+                    const action = duplicateWarning.action;
+                    setDuplicateWarning(null);
+                    if (action === "save") {
+                      executeSave();
+                    } else {
+                      setIsPrintModalOpen(true);
+                    }
+                  }}
+                >
+                  Nouveau chèque distinct
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-duplicate-update"
+                  onClick={() => {
+                    const target = duplicateWarning.duplicateRecord;
+                    const action = duplicateWarning.action;
+                    setActiveChequeId(target.id);
+                    setActiveChequeStatus(target.status);
+                    setActivePrintCount(target.printCount || (target.status === "printed" ? 1 : 0));
+                    setDuplicateWarning(null);
+
+                    if (action === "save") {
+                      executeSave(target.id);
+                    } else {
+                      setIsPrintModalOpen(true);
+                    }
+                  }}
+                >
+                  <RefreshCw size={14} />
+                  <span>
+                    {duplicateWarning.duplicateRecord.status === "printed"
+                      ? "Réimprimer ce chèque (Mise à jour)"
+                      : "Mettre à jour ce chèque"}
+                  </span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="btn-duplicate-cancel"
+                onClick={() => setDuplicateWarning(null)}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Dedicated Print Layer (Hidden on screen, exact 100% physical mm on printer) */}
       {(() => {
@@ -611,7 +844,7 @@ export default function App() {
                 border: printSettings.showBorderGuide ? "1px dashed #777777" : "none"
               }}
             >
-              {/* Barres d'encaissement Chèque barré (// Non endossable) dans le coin supérieur gauche */}
+              {/* Barres d'encaissement Chèque barré (//) avec ou sans texte dans le coin supérieur gauche */}
               {isCrossed && (
                 <div
                   className="print-crossed-bars"
@@ -632,19 +865,21 @@ export default function App() {
                   >
                     <line x1="0" y1="44" x2="44" y2="0" stroke="#000000" strokeWidth="2.8" strokeLinecap="square" />
                     <line x1="0" y1="74" x2="74" y2="0" stroke="#000000" strokeWidth="2.8" strokeLinecap="square" />
-                    <text
-                      x="29.5"
-                      y="29.5"
-                      transform="rotate(-45 29.5 29.5)"
-                      fontSize="6"
-                      fontWeight="bold"
-                      fill="#000000"
-                      letterSpacing="0.6"
-                      textAnchor="middle"
-                      dy="-1.2"
-                    >
-                      NON ENDOSSABLE
-                    </text>
+                    {crossedWithText && (
+                      <text
+                        x="29.5"
+                        y="29.5"
+                        transform="rotate(-45 29.5 29.5)"
+                        fontSize="6"
+                        fontWeight="bold"
+                        fill="#000000"
+                        letterSpacing="0.6"
+                        textAnchor="middle"
+                        dy="-1.2"
+                      >
+                        NON ENDOSSABLE
+                      </text>
+                    )}
                   </svg>
                 </div>
               )}

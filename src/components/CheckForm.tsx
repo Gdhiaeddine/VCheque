@@ -13,6 +13,8 @@ interface CheckFormProps {
   words: string;
   isCrossed: boolean;
   onChangeIsCrossed: (val: boolean) => void;
+  crossedWithText?: boolean;
+  onChangeCrossedWithText?: (val: boolean) => void;
   onSubmit: () => void;
 }
 
@@ -28,6 +30,8 @@ export const CheckForm: React.FC<CheckFormProps> = ({
   words,
   isCrossed,
   onChangeIsCrossed,
+  crossedWithText = true,
+  onChangeCrossedWithText,
   onSubmit
 }) => {
   const handleAmountInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,25 +132,45 @@ export const CheckForm: React.FC<CheckFormProps> = ({
             </div>
           </div>
 
-          {/* Option Chèque barré (// Non endossable) - Même hauteur 38px et style identique à Lieu & Date */}
+          {/* Option Chèque barré (//) avec choix de la mention Non endossable */}
           <div className="form-group form-group-crossed">
             <label htmlFor="crossed-checkbox-field" className="form-label">
               Chèque barré (//)
             </label>
-            <label className="crossed-input-control" htmlFor="crossed-checkbox-field">
-              <input
-                id="crossed-checkbox-field"
-                type="checkbox"
-                className="crossed-checkbox-input"
-                checked={isCrossed}
-                onChange={(e) => onChangeIsCrossed(e.target.checked)}
-              />
-              <ShieldCheck size={16} className={`crossed-icon ${isCrossed ? "active" : ""}`} />
-              <span className="crossed-control-text">Non endossable</span>
-              <span className={`crossed-badge ${isCrossed ? "active" : ""}`}>
-                {isCrossed ? "Actif" : "Non"}
-              </span>
-            </label>
+            <div className="crossed-control-container">
+              <label className="crossed-input-control" htmlFor="crossed-checkbox-field">
+                <input
+                  id="crossed-checkbox-field"
+                  type="checkbox"
+                  className="crossed-checkbox-input"
+                  checked={isCrossed}
+                  onChange={(e) => onChangeIsCrossed(e.target.checked)}
+                />
+                <ShieldCheck size={16} className={`crossed-icon ${isCrossed ? "active" : ""}`} />
+                <span className="crossed-control-text">
+                  {isCrossed
+                    ? (crossedWithText ? "Barres + Non endossable" : "Barres seules (//)")
+                    : "Non barré"}
+                </span>
+                <span className={`crossed-badge ${isCrossed ? "active" : ""}`}>
+                  {isCrossed ? "Actif" : "Non"}
+                </span>
+              </label>
+
+              {isCrossed && onChangeCrossedWithText && (
+                <div className="crossed-suboptions-row">
+                  <label className="crossed-subtoggle-label" title="Imprimer ou non la mention 'NON ENDOSSABLE' entre les deux barres">
+                    <input
+                      type="checkbox"
+                      className="crossed-subcheckbox"
+                      checked={crossedWithText}
+                      onChange={(e) => onChangeCrossedWithText(e.target.checked)}
+                    />
+                    <span>Mention « Non endossable »</span>
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

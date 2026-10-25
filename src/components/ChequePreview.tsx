@@ -11,6 +11,7 @@ interface ChequePreviewProps {
   place: string;
   date: string;
   isCrossed?: boolean;
+  crossedWithText?: boolean;
   formattedNumeric?: string;
   activeField: FieldKey;
   onSelectField: (key: FieldKey) => void;
@@ -29,6 +30,7 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
   place,
   date,
   isCrossed = true,
+  crossedWithText = true,
   formattedNumeric,
   activeField,
   onSelectField,
@@ -222,25 +224,30 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
             </div>
           )}
 
-          {/* Barres Chèque barré (// Non endossable) dans le coin supérieur gauche */}
+          {/* Barres Chèque barré (//) avec ou sans texte "NON ENDOSSABLE" */}
           {isCrossed && (
-            <div className="cheque-crossed-indicator" title="Chèque barré — Non endossable">
+            <div
+              className="cheque-crossed-indicator"
+              title={crossedWithText ? "Chèque barré — Non endossable" : "Chèque barré simple (sans texte)"}
+            >
               <svg className="crossed-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
                 <line x1="0" y1="44" x2="44" y2="0" stroke="#1e1e18" strokeWidth="2.8" strokeLinecap="square" />
                 <line x1="0" y1="74" x2="74" y2="0" stroke="#1e1e18" strokeWidth="2.8" strokeLinecap="square" />
-                <text
-                  x="29.5"
-                  y="29.5"
-                  transform="rotate(-45 29.5 29.5)"
-                  fontSize="6.2"
-                  fontWeight="800"
-                  fill="#1e1e18"
-                  letterSpacing="0.6"
-                  textAnchor="middle"
-                  dy="-1.2"
-                >
-                  NON ENDOSSABLE
-                </text>
+                {crossedWithText && (
+                  <text
+                    x="29.5"
+                    y="29.5"
+                    transform="rotate(-45 29.5 29.5)"
+                    fontSize="6.2"
+                    fontWeight="800"
+                    fill="#1e1e18"
+                    letterSpacing="0.6"
+                    textAnchor="middle"
+                    dy="-1.2"
+                  >
+                    NON ENDOSSABLE
+                  </text>
+                )}
               </svg>
             </div>
           )}

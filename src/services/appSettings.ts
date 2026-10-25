@@ -16,7 +16,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 
   // Valeurs par défaut du formulaire
   defaultPlace: "Alger",
-  defaultIsCrossed: true
+  defaultIsCrossed: true,
+  defaultCrossedWithText: true
 };
 
 /**

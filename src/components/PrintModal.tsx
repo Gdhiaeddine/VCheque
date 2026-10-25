@@ -34,7 +34,10 @@ export interface PrintModalProps {
   beneficiary: string;
   date: string;
   isCrossed?: boolean;
+  crossedWithText?: boolean;
   formattedNumeric?: string;
+  isReprint?: boolean;
+  printCount?: number;
 }
 
 export function getPaperDimensions(
@@ -148,7 +151,10 @@ export const PrintModal: React.FC<PrintModalProps> = ({
   beneficiary,
   date,
   isCrossed = true,
-  formattedNumeric
+  crossedWithText = true,
+  formattedNumeric,
+  isReprint = false,
+  printCount = 0
 }) => {
   const [previewTab, setPreviewTab] = useState<"sheet" | "cheque">("sheet");
 
@@ -211,9 +217,13 @@ export const PrintModal: React.FC<PrintModalProps> = ({
               <Printer size={20} className="modal-header-icon" />
             </div>
             <div>
-              <h2 className="modal-title">Disposition & Positionnement d'Impression</h2>
+              <h2 className="modal-title">
+                {isReprint ? `Réimpression du Chèque (Copie N°${(printCount || 1) + 1})` : "Disposition & Positionnement d'Impression"}
+              </h2>
               <p className="modal-subtitle">
-                Choisissez l'emplacement exact du chèque sur la feuille selon votre bac d'imprimante.
+                {isReprint
+                  ? "Ce chèque a déjà été imprimé. L'impression sera enregistrée comme réimpression sans doublon."
+                  : "Choisissez l'emplacement exact du chèque sur la feuille selon votre bac d'imprimante."}
               </p>
             </div>
           </div>
@@ -593,18 +603,20 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                       <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%", display: "block" }}>
                         <line x1="0" y1="44" x2="44" y2="0" stroke="#1e1e18" strokeWidth="3.2" />
                         <line x1="0" y1="74" x2="74" y2="0" stroke="#1e1e18" strokeWidth="3.2" />
-                        <text
-                          x="29.5"
-                          y="29.5"
-                          transform="rotate(-45 29.5 29.5)"
-                          fontSize="6.5"
-                          fontWeight="bold"
-                          fill="#1e1e18"
-                          textAnchor="middle"
-                          dy="-1"
-                        >
-                          NON ENDOSSABLE
-                        </text>
+                        {crossedWithText && (
+                          <text
+                            x="29.5"
+                            y="29.5"
+                            transform="rotate(-45 29.5 29.5)"
+                            fontSize="6.5"
+                            fontWeight="bold"
+                            fill="#1e1e18"
+                            textAnchor="middle"
+                            dy="-1"
+                          >
+                            NON ENDOSSABLE
+                          </text>
+                        )}
                       </svg>
                     </div>
                   )}
@@ -663,7 +675,9 @@ export const PrintModal: React.FC<PrintModalProps> = ({
               onClick={onConfirmPrint}
             >
               <Printer size={16} />
-              <span>Lancer l'impression</span>
+              <span>
+                {isReprint ? `Lancer la réimpression (N°${(printCount || 1) + 1})` : "Lancer l'impression"}
+              </span>
             </button>
           </div>
         </div>
