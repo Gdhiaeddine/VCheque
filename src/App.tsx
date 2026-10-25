@@ -563,14 +563,7 @@ export default function App() {
       {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
 
       {/* 1. Barre supérieure */}
-      <TopBar
-        onOpenSettings={() => setActiveTab("settings")}
-        isLeftCollapsed={isLeftCollapsed}
-        onToggleLeft={() => setIsLeftCollapsed((v) => !v)}
-        isRightCollapsed={isRightCollapsed}
-        onToggleRight={() => setIsRightCollapsed((v) => !v)}
-        showRightToggle={activeTab === "home"}
-      />
+      <TopBar onOpenSettings={() => setActiveTab("settings")} />
 
       {/* 2. Corps de l'application (Barre latérale + Zone centrale + Colonne droite) */}
       <div className="app-body">
