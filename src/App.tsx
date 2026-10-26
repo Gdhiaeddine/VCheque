@@ -54,15 +54,15 @@ export default function App() {
   // 0. App Preferences & Settings
   const [appSettings, setAppSettings] = useState<AppSettings>(() => loadAppSettings());
 
-  // 1. Core Cheque State (Default demo values matching specs)
-  const [amount, setAmount] = useState<string>("125450.75");
-  const [beneficiary, setBeneficiary] = useState<string>("Entreprise Exemple SARL");
+  // 1. Core Cheque State (Default blank values for fresh entry)
+  const [amount, setAmount] = useState<string>("");
+  const [beneficiary, setBeneficiary] = useState<string>("");
   const [place, setPlace] = useState<string>(() => loadAppSettings().defaultPlace || "Alger");
-  const [date, setDate] = useState<string>("2026-10-19");
+  const [date, setDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
   const [isCrossed, setIsCrossed] = useState<boolean>(() => loadAppSettings().defaultIsCrossed !== false);
   const [crossedWithText, setCrossedWithText] = useState<boolean>(() => loadAppSettings().defaultCrossedWithText !== false);
   const [showChequeNumber, setShowChequeNumber] = useState<boolean>(() => loadAppSettings().defaultShowChequeNumber ?? false);
-  const [chequeNumber, setChequeNumber] = useState<string>("0048291");
+  const [chequeNumber, setChequeNumber] = useState<string>("");
 
   // 2. Templates & Calibration State
   const [templates, setTemplates] = useState<BankTemplate[]>(() => {
@@ -253,6 +253,7 @@ export default function App() {
 
   // Amount in French words (automatic with settings)
   const words = useMemo(() => {
+    if (!amount.trim()) return "";
     return amountInFrenchWords(amount, {
       letterCase: appSettings.letterCase,
       currencyTextVariant: appSettings.currencyTextVariant,
@@ -263,6 +264,7 @@ export default function App() {
 
   // Formatted numeric amount with security hashes and currency according to settings
   const formattedNumeric = useMemo(() => {
+    if (!amount.trim()) return "";
     return formatNumericAmount(amount, {
       securitySymbol: appSettings.numericSecuritySymbol,
       currencySuffix: appSettings.numericCurrencySuffix,
@@ -345,20 +347,20 @@ export default function App() {
   const hasChequeData = useMemo(() => {
     return Boolean(
       amount.trim() ||
-      (beneficiary.trim() && beneficiary.trim() !== "Entreprise Exemple SARL") ||
+      beneficiary.trim() ||
+      chequeNumber.trim() ||
       activeChequeId !== null
     );
-  }, [amount, beneficiary, activeChequeId]);
+  }, [amount, beneficiary, chequeNumber, activeChequeId]);
 
   // Détection fine si le chèque en cours a des modifications non enregistrées
   const isFormDirty = useMemo(() => {
     if (!activeChequeId) {
       const num = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
       const hasAmount = !isNaN(num) && num > 0;
-      const hasCustomBeneficiary = Boolean(
-        beneficiary.trim() && beneficiary.trim() !== "Entreprise Exemple SARL"
-      );
-      return hasAmount || hasCustomBeneficiary;
+      const hasBeneficiary = Boolean(beneficiary.trim());
+      const hasChequeNum = Boolean(chequeNumber.trim());
+      return hasAmount || hasBeneficiary || hasChequeNum;
     }
     const saved = history.find((h) => h.id === activeChequeId);
     if (!saved) return true;
@@ -384,7 +386,7 @@ export default function App() {
     setIsCrossed(appSettings.defaultIsCrossed !== false);
     setCrossedWithText(appSettings.defaultCrossedWithText !== false);
     setShowChequeNumber(appSettings.defaultShowChequeNumber ?? false);
-    setChequeNumber("0048291");
+    setChequeNumber("");
     setActiveChequeId(null);
     setActiveChequeStatus(null);
     setActivePrintCount(0);

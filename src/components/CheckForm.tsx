@@ -180,7 +180,7 @@ export const CheckForm: React.FC<CheckFormProps> = ({
                 className="form-input amount-field-input"
                 value={amount}
                 onChange={handleAmountInput}
-                placeholder="125450.75"
+                placeholder="0.00"
               />
             </div>
             <small className="field-hint">Utilisez un point ou une virgule pour les centimes.</small>
@@ -216,7 +216,7 @@ export const CheckForm: React.FC<CheckFormProps> = ({
                   if (suggestions.length > 0) setIsDropdownOpen(true);
                 }}
                 onKeyDown={handleKeyDownBeneficiary}
-                placeholder="Entreprise Exemple SARL"
+                placeholder="Nom du bénéficiaire..."
               />
             </div>
 
@@ -377,7 +377,7 @@ export const CheckForm: React.FC<CheckFormProps> = ({
                       className="form-input with-icon"
                       value={chequeNumber || ""}
                       onChange={(e) => onChangeChequeNumber(e.target.value)}
-                      placeholder="Ex: 0048291"
+                      placeholder="Ex: 0012345"
                     />
                   </div>
                 </div>

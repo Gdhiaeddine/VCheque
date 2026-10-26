@@ -59,9 +59,9 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
   }, [date]);
 
   // Formatted numeric amount
-  const formattedAmount = formattedNumeric || React.useMemo(() => {
+  const formattedAmount = formattedNumeric !== undefined ? formattedNumeric : React.useMemo(() => {
     const num = Number(amount.replace(/\s/g, "").replace(",", "."));
-    if (!amount.trim() || !Number.isFinite(num) || num < 0) return "—";
+    if (!amount.trim() || !Number.isFinite(num) || num < 0) return "";
     return num.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " #";
   }, [amount]);
 
@@ -276,7 +276,7 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
             }}
             title="Bénéficiaire (glisser pour ajuster)"
           >
-            <span className="field-text">{beneficiary || "Bénéficiaire"}</span>
+            <span className="field-text">{beneficiary || (showGuides && activeField === "beneficiary" ? "Bénéficiaire" : "")}</span>
             {activeField === "beneficiary" && (
               <span className="field-coord-bubble">
                 <Move size={10} /> {currentTemplate.positions.beneficiary.x.toFixed(1)}, {currentTemplate.positions.beneficiary.y.toFixed(1)} mm
@@ -393,7 +393,7 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
               }}
               title="Numéro de chèque (glisser pour ajuster)"
             >
-              <span className="field-text">{chequeNumber || "N° 0048291"}</span>
+              <span className="field-text">{chequeNumber ? (chequeNumber.startsWith("N°") ? chequeNumber : `N° ${chequeNumber}`) : (showGuides && activeField === "chequeNumber" ? "N° 0000000" : "")}</span>
               {activeField === "chequeNumber" && (
                 <span className="field-coord-bubble">
                   <Move size={10} /> {currentTemplate.positions.chequeNumber.x.toFixed(1)}, {currentTemplate.positions.chequeNumber.y.toFixed(1)} mm
@@ -418,12 +418,12 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
           <div className="detail-item">
             <span className="detail-label">N° de chèque :</span>
             <strong className="detail-val">
-              {showChequeNumber ? (chequeNumber || "0048291") : "Masqué"}
+              {showChequeNumber ? (chequeNumber || "—") : "Masqué"}
             </strong>
           </div>
           <div className="detail-item">
             <span className="detail-label">Montant en DZD :</span>
-            <strong className="detail-val">{formattedAmount}</strong>
+            <strong className="detail-val">{formattedAmount || "—"}</strong>
           </div>
           <div className="detail-item">
             <span className="detail-label">Bénéficiaire :</span>
@@ -439,7 +439,7 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
           </div>
           <div className="detail-item full-row">
             <span className="detail-label">Montant en lettres :</span>
-            <span className="detail-val-words">{words}</span>
+            <span className="detail-val-words">{words || "—"}</span>
           </div>
         </div>
       </div>
