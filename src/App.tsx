@@ -1518,16 +1518,21 @@ export default function App() {
         isOpen={showBankAccountsModal}
         onClose={() => setShowBankAccountsModal(false)}
         templates={templates}
-        onAccountSelected={(acc, nextChequeNum) => {
+        currentAccountId={selectedAccountId}
+        currentChequeBookId={activeChequeBook?.id}
+        onAccountSelected={(acc, nextChequeNum, selectedBook) => {
           setSelectedAccountId(acc.id);
           setSelectedTemplateId(acc.bankTemplateId);
+          if (selectedBook) {
+            setActiveChequeBook(selectedBook);
+          }
           if (nextChequeNum) {
             setChequeNumber(nextChequeNum);
             setShowChequeNumber(true);
           }
           setToast({
-            message: `Compte "${acc.label}" sélectionné (Banque : ${acc.bankTemplateId.toUpperCase()}).`,
-            type: "info"
+            message: `Compte "${acc.label}" sélectionné pour le chèque en cours.`,
+            type: "success"
           });
         }}
       />

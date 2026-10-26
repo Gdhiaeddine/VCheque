@@ -8293,6 +8293,22 @@ button {
   justify-content: space-between;
 }
 
+.account-tags-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.account-current-cheque-pill {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
 .account-default-tag {
   background: #ecfdf5;
   color: #047857;
@@ -8356,6 +8372,27 @@ button {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-select-account-main:hover {
+  background: linear-gradient(135deg, #167a5d, #0d4e3b);
+  box-shadow: 0 3px 8px rgba(18, 97, 74, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-select-account-main.active {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1.5px solid #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  cursor: pointer;
+}
+
+.btn-select-account-main.active:hover {
+  background: #d1fae5;
+  border-color: #059669;
+  transform: none;
 }
 
 .account-summary-cards {
@@ -8495,6 +8532,446 @@ button {
   font-size: 11px;
   color: var(--text-secondary);
   margin-top: 4px;
+}
+
+.book-action-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.book-selected-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.btn-use-book {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--gold-border);
+  background: #ffffff;
+  color: var(--gold-dark);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-use-book:hover {
+  background: #fdfbf7;
+  border-color: var(--gold-primary);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.book-exhausted-badge {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* --- Style Moderne et Élégant pour le Formulaire d'Ajout / Édition de Compte --- */
+.account-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #ffffff;
+}
+
+.account-form-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.account-form-icon-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(18, 97, 74, 0.12), rgba(18, 97, 74, 0.04));
+  color: #12614a;
+  border: 1px solid rgba(18, 97, 74, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.right-panel-heading {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.right-panel-subheading {
+  margin: 3px 0 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.account-form-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-xs);
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.form-group-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-lbl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.field-icon-gold {
+  color: var(--gold-dark);
+}
+
+.field-lbl .req {
+  color: #dc2626;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+.field-lbl .optional {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.field-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 13px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: var(--radius-xs);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: #fdfbf7;
+  transition: all 0.2s ease;
+  outline: none;
+  font-family: inherit;
+}
+
+.field-input:hover {
+  border-color: #cbd5e1;
+  background: #ffffff;
+}
+
+.field-input:focus {
+  background: #ffffff;
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 0 3px rgba(172, 137, 70, 0.15);
+}
+
+.field-input.font-mono {
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.5px;
+}
+
+.field-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+.field-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+  line-height: 1.35;
+}
+
+.rib-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.rib-input {
+  padding-right: 65px;
+  font-weight: 600;
+}
+
+.rib-digit-badge {
+  position: absolute;
+  right: 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: #e2e8f0;
+  padding: 2px 7px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.amount-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.amount-input {
+  padding-right: 44px;
+  font-weight: 600;
+}
+
+.currency-suffix {
+  position: absolute;
+  right: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold-dark);
+  pointer-events: none;
+}
+
+.form-row-2 {
+  display: flex;
+  gap: 14px;
+  width: 100%;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.form-checkbox-card {
+  background: #faf8f5;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  padding: 12px 14px;
+  margin-top: 4px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.form-checkbox-card:hover {
+  border-color: var(--gold-border);
+  background: #fdfbf7;
+}
+
+.custom-checkbox-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  margin: 0;
+  width: 100%;
+}
+
+.custom-checkbox-container input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #12614a;
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+.checkbox-text-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.checkbox-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.checkbox-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.account-form-btns {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.btn-acc-cancel {
+  padding: 8px 16px;
+  border-radius: var(--radius-xs);
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-acc-cancel:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.btn-acc-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: var(--radius-xs);
+  border: 1px solid #147257;
+  background: linear-gradient(135deg, #12614a, #0a3d2e);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: 0 2px 4px rgba(18, 97, 74, 0.2);
+}
+
+.btn-acc-submit:hover {
+  background: linear-gradient(135deg, #167a5d, #0d4e3b);
+  box-shadow: 0 4px 8px rgba(18, 97, 74, 0.25);
+  transform: translateY(-1px);
+}
+
+/* --- Style Formulaire Nouveau Chéquier --- */
+.add-book-form {
+  background: #faf8f5;
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius-xs);
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.add-book-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(172, 137, 70, 0.2);
+}
+
+.add-book-title-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.add-book-title-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.btn-close-mini {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-close-mini:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-primary);
+}
+
+.book-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-xs);
+  color: #b91c1c;
+  font-size: 11.5px;
+  margin-bottom: 12px;
+}
+
+.book-inputs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.book-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 11.5px;
+}
+
+.no-books-box {
+  padding: 24px 16px;
+  text-align: center;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-xs);
+  background: #faf8f5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.no-account-selected {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 /* ==========================================================================

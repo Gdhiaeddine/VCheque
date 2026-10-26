@@ -2,8 +2,10 @@ import React, { useState, useEffect } from "react";
 import {
   CreditCard,
   Building,
+  Building2,
   Plus,
   Check,
+  CheckCircle2,
   Edit2,
   Trash2,
   X,
@@ -11,7 +13,9 @@ import {
   Hash,
   AlertTriangle,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  MapPin,
+  Coins
 } from "lucide-react";
 import type { BankAccountRecord, ChequeBookRecord, BankTemplate } from "../types";
 import {
@@ -29,13 +33,17 @@ interface BankAccountsModalProps {
   isOpen: boolean;
   onClose: () => void;
   templates: BankTemplate[];
-  onAccountSelected?: (account: BankAccountRecord, nextChequeNum?: string) => void;
+  currentAccountId?: string | null;
+  currentChequeBookId?: string | null;
+  onAccountSelected?: (account: BankAccountRecord, nextChequeNum?: string, selectedBook?: ChequeBookRecord) => void;
 }
 
 export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
   isOpen,
   onClose,
   templates,
+  currentAccountId,
+  currentChequeBookId,
   onAccountSelected
 }) => {
   const [accounts, setAccounts] = useState<BankAccountRecord[]>([]);
@@ -69,8 +77,12 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
     try {
       const list = await getBankAccounts(activeCompanyId);
       setAccounts(list);
-      if (list.length > 0 && !selectedAccountId) {
-        setSelectedAccountId(list[0].id);
+      if (list.length > 0) {
+        if (currentAccountId && list.some((a) => a.id === currentAccountId)) {
+          setSelectedAccountId(currentAccountId);
+        } else if (!selectedAccountId || !list.some((a) => a.id === selectedAccountId)) {
+          setSelectedAccountId(list[0].id);
+        }
       }
     } catch (err) {
       console.error("Erreur chargement comptes bancaires:", err);
@@ -91,10 +103,13 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       loadAccounts();
+      if (currentAccountId) {
+        setSelectedAccountId(currentAccountId);
+      }
       setIsEditingAccount(false);
       setIsAddingBook(false);
     }
-  }, [isOpen, activeCompanyId]);
+  }, [isOpen, activeCompanyId, currentAccountId]);
 
   useEffect(() => {
     if (selectedAccountId) {
@@ -218,10 +233,10 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
     await loadChequeBooksForAccount(selectedAccountId);
   };
 
-  const handleSelectAccountForCheque = (acc: BankAccountRecord) => {
+  const handleSelectAccountForCheque = (acc: BankAccountRecord, targetBook?: ChequeBookRecord) => {
     if (onAccountSelected) {
-      const activeBook = chequeBooks.find((b) => b.isActive && b.accountId === acc.id);
-      onAccountSelected(acc, activeBook?.currentNumber);
+      const activeBook = targetBook || chequeBooks.find((b) => b.isActive && b.accountId === acc.id);
+      onAccountSelected(acc, activeBook?.currentNumber, activeBook);
     }
     onClose();
   };
@@ -292,7 +307,14 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                     >
                       <div className="account-card-top-row">
                         <strong className="account-label">{acc.label}</strong>
-                        {acc.isDefault && <span className="account-default-tag">Par défaut</span>}
+                        <div className="account-tags-wrap">
+                          {acc.id === currentAccountId && (
+                            <span className="account-current-cheque-pill" title="Compte actuellement utilisé pour le chèque en cours">
+                              Actif sur chèque
+                            </span>
+                          )}
+                          {acc.isDefault && <span className="account-default-tag">Par défaut</span>}
+                        </div>
                       </div>
 
                       <div className="account-card-bank-info">
@@ -340,9 +362,19 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
           <div className="account-right-column">
             {isEditingAccount ? (
               <form onSubmit={handleSaveAccount} className="account-edit-form">
-                <h3 className="right-panel-heading">
-                  {editingAccountId ? "Modifier le compte bancaire" : "Nouveau compte bancaire"}
-                </h3>
+                <div className="account-form-header">
+                  <div className="account-form-icon-circle">
+                    <CreditCard size={20} />
+                  </div>
+                  <div>
+                    <h3 className="right-panel-heading">
+                      {editingAccountId ? "Modifier le compte bancaire" : "Nouveau compte bancaire"}
+                    </h3>
+                    <p className="right-panel-subheading">
+                      Renseignez les coordonnées bancaires et le gabarit de chèque associé
+                    </p>
+                  </div>
+                </div>
 
                 {formAccountError && (
                   <div className="account-form-error">
@@ -352,47 +384,72 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                 )}
 
                 <div className="form-group-box">
-                  <label className="field-lbl">Banque / Modèle de chèque</label>
-                  <select
-                    className="field-input"
-                    value={formBankTemplateId}
-                    onChange={(e) => setFormBankTemplateId(e.target.value)}
-                  >
-                    {templates.map((tpl) => (
-                      <option key={tpl.id} value={tpl.id}>
-                        {tpl.name} ({tpl.shortName || tpl.id.toUpperCase()})
-                      </option>
-                    ))}
-                  </select>
+                  <label className="field-lbl">
+                    <Building2 size={14} className="field-icon-gold" />
+                    <span>Banque / Modèle de chèque</span>
+                    <span className="req">*</span>
+                  </label>
+                  <div className="input-with-icon-wrap">
+                    <select
+                      className="field-input field-select"
+                      value={formBankTemplateId}
+                      onChange={(e) => setFormBankTemplateId(e.target.value)}
+                    >
+                      {templates.map((tpl) => (
+                        <option key={tpl.id} value={tpl.id}>
+                          {tpl.name} ({tpl.shortName || tpl.id.toUpperCase()})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <span className="field-hint">Le gabarit d'impression sera synchronisé lors de l'émission de chèques</span>
                 </div>
 
                 <div className="form-group-box">
-                  <label className="field-lbl">Libellé du compte (Ex: Compte Courant Exploitation)</label>
+                  <label className="field-lbl">
+                    <CreditCard size={14} className="field-icon-gold" />
+                    <span>Libellé du compte</span>
+                    <span className="req">*</span>
+                  </label>
                   <input
                     type="text"
                     className="field-input"
                     value={formLabel}
                     onChange={(e) => setFormLabel(e.target.value)}
-                    placeholder="Ex: Compte Courant BNA 001"
+                    placeholder="Ex: Compte Courant BNA 001 (Exploitation)"
                     required
                   />
+                  <span className="field-hint">Nom distinctif pour identifier rapidement ce compte dans l'application</span>
                 </div>
 
                 <div className="form-group-box">
-                  <label className="field-lbl">Numéro de Compte / RIB (20 chiffres)</label>
-                  <input
-                    type="text"
-                    className="field-input font-mono"
-                    value={formRib}
-                    onChange={(e) => setFormRib(e.target.value)}
-                    placeholder="Ex: 001 00123 4567890123 45"
-                    required
-                  />
+                  <label className="field-lbl">
+                    <Hash size={14} className="field-icon-gold" />
+                    <span>Numéro de Compte / RIB (20 chiffres)</span>
+                    <span className="req">*</span>
+                  </label>
+                  <div className="rib-input-wrapper">
+                    <input
+                      type="text"
+                      className="field-input font-mono rib-input"
+                      value={formRib}
+                      onChange={(e) => setFormRib(e.target.value)}
+                      placeholder="001 00123 4567890123 45"
+                      required
+                      maxLength={30}
+                    />
+                    <span className="rib-digit-badge">{formRib.replace(/\s/g, "").length}/20</span>
+                  </div>
+                  <span className="field-hint">Format bancaire algérien standard (Code Banque + Code Agence + N° Compte + Clé)</span>
                 </div>
 
                 <div className="form-row-2">
-                  <div className="form-group-box">
-                    <label className="field-lbl">Agence bancaire (Optionnel)</label>
+                  <div className="form-group-box flex-1">
+                    <label className="field-lbl">
+                      <MapPin size={14} className="field-icon-gold" />
+                      <span>Agence bancaire</span>
+                      <span className="optional">(Optionnel)</span>
+                    </label>
                     <input
                       type="text"
                       className="field-input"
@@ -402,40 +459,49 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                     />
                   </div>
 
-                  <div className="form-group-box">
-                    <label className="field-lbl">Solde comptable (DA)</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      value={formBalance}
-                      onChange={(e) => setFormBalance(e.target.value)}
-                      placeholder="0.00"
-                    />
+                  <div className="form-group-box flex-1">
+                    <label className="field-lbl">
+                      <Coins size={14} className="field-icon-gold" />
+                      <span>Solde comptable</span>
+                    </label>
+                    <div className="amount-input-wrap">
+                      <input
+                        type="text"
+                        className="field-input font-mono amount-input"
+                        value={formBalance}
+                        onChange={(e) => setFormBalance(e.target.value)}
+                        placeholder="0.00"
+                      />
+                      <span className="currency-suffix">DA</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="form-checkbox-row">
-                  <label className="checkbox-label">
+                <div className="form-checkbox-card">
+                  <label className="custom-checkbox-container">
                     <input
                       type="checkbox"
                       checked={formIsDefault}
                       onChange={(e) => setFormIsDefault(e.target.checked)}
                     />
-                    <span>Définir comme compte principal par défaut</span>
+                    <div className="checkbox-text-block">
+                      <span className="checkbox-title">Définir comme compte principal par défaut</span>
+                      <span className="checkbox-desc">Ce compte sera sélectionné automatiquement à chaque nouvelle saisie de chèque</span>
+                    </div>
                   </label>
                 </div>
 
                 <div className="account-form-btns">
                   <button
                     type="button"
-                    className="btn-modal-secondary"
+                    className="btn-acc-cancel"
                     onClick={() => setIsEditingAccount(false)}
                   >
                     Annuler
                   </button>
-                  <button type="submit" className="btn-modal-primary">
+                  <button type="submit" className="btn-acc-submit">
                     <Check size={16} />
-                    <span>{editingAccountId ? "Mettre à jour" : "Créer le compte"}</span>
+                    <span>{editingAccountId ? "Mettre à jour le compte" : "Créer le compte bancaire"}</span>
                   </button>
                 </div>
               </form>
@@ -452,12 +518,25 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                   {onAccountSelected && (
                     <button
                       type="button"
-                      className="btn-select-account-main"
+                      className={`btn-select-account-main ${selectedAccount.id === currentAccountId ? "active" : ""}`}
                       onClick={() => handleSelectAccountForCheque(selectedAccount)}
-                      title="Utiliser ce compte bancaire pour le chèque en cours"
+                      title={
+                        selectedAccount.id === currentAccountId
+                          ? "Ce compte est actuellement sélectionné pour le chèque en cours"
+                          : "Utiliser ce compte bancaire pour le chèque en cours"
+                      }
                     >
-                      <Sparkles size={14} />
-                      <span>Utiliser pour ce chèque</span>
+                      {selectedAccount.id === currentAccountId ? (
+                        <>
+                          <CheckCircle2 size={15} />
+                          <span>Compte sélectionné pour ce chèque</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={14} />
+                          <span>Utiliser pour ce chèque</span>
+                        </>
+                      )}
                     </button>
                   )}
                 </div>
@@ -510,21 +589,33 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                   {isAddingBook ? (
                     <form onSubmit={handleSaveBook} className="add-book-form">
                       <div className="add-book-title-row">
-                        <strong>Enregistrer un nouveau chéquier</strong>
+                        <div className="add-book-title-left">
+                          <BookOpen size={16} className="field-icon-gold" />
+                          <strong className="add-book-title-text">Enregistrer un nouveau chéquier</strong>
+                        </div>
                         <button
                           type="button"
                           className="btn-close-mini"
                           onClick={() => setIsAddingBook(false)}
+                          title="Fermer"
                         >
-                          <X size={14} />
+                          <X size={15} />
                         </button>
                       </div>
 
-                      {bookError && <div className="book-error">{bookError}</div>}
+                      {bookError && (
+                        <div className="book-error">
+                          <AlertTriangle size={14} />
+                          <span>{bookError}</span>
+                        </div>
+                      )}
 
                       <div className="book-inputs-grid">
                         <div className="form-group-box">
-                          <label className="field-lbl">Nom de la série</label>
+                          <label className="field-lbl">
+                            <span>Série / Libellé</span>
+                            <span className="req">*</span>
+                          </label>
                           <input
                             type="text"
                             className="field-input"
@@ -536,7 +627,10 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                         </div>
 
                         <div className="form-group-box">
-                          <label className="field-lbl">Premier N° de chèque</label>
+                          <label className="field-lbl">
+                            <span>Premier N°</span>
+                            <span className="req">*</span>
+                          </label>
                           <input
                             type="text"
                             className="field-input font-mono"
@@ -548,7 +642,10 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                         </div>
 
                         <div className="form-group-box">
-                          <label className="field-lbl">Dernier N° de chèque</label>
+                          <label className="field-lbl">
+                            <span>Dernier N°</span>
+                            <span className="req">*</span>
+                          </label>
                           <input
                             type="text"
                             className="field-input font-mono"
@@ -563,12 +660,12 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                       <div className="book-form-actions">
                         <button
                           type="button"
-                          className="btn-modal-secondary btn-sm"
+                          className="btn-acc-cancel btn-sm"
                           onClick={() => setIsAddingBook(false)}
                         >
                           Annuler
                         </button>
-                        <button type="submit" className="btn-modal-primary btn-sm">
+                        <button type="submit" className="btn-acc-submit btn-sm">
                           <Check size={14} />
                           <span>Activer ce chéquier</span>
                         </button>
@@ -626,6 +723,27 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                                   {remaining} restant{remaining > 1 ? "s" : ""}
                                 </span>
                               </div>
+                            </div>
+
+                            <div className="book-action-row">
+                              {currentChequeBookId === book.id && selectedAccount.id === currentAccountId ? (
+                                <span className="book-selected-badge" title="Ce chéquier est actuellement utilisé pour le chèque en cours">
+                                  <CheckCircle2 size={12} />
+                                  <span>Chéquier actif sur ce chèque</span>
+                                </span>
+                              ) : book.isActive ? (
+                                <button
+                                  type="button"
+                                  className="btn-use-book"
+                                  onClick={() => handleSelectAccountForCheque(selectedAccount, book)}
+                                  title={`Utiliser ce chéquier pour le chèque (Prochain N° : ${book.currentNumber})`}
+                                >
+                                  <Sparkles size={12} />
+                                  <span>Utiliser ce chéquier (N° {book.currentNumber})</span>
+                                </button>
+                              ) : (
+                                <span className="book-exhausted-badge">Carnet épuisé</span>
+                              )}
                             </div>
                           </div>
                         );
