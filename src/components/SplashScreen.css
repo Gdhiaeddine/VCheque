@@ -179,6 +179,9 @@
 }
 
 /* --- 5) Ornements géométriques ------------------------------------------ */
+/* Motif zellige diagonal en webp (fond transparent).
+   Inversé (flip) avec rotation 90° opposée pour orienter le motif en "\"
+   dans les deux coins (haut-droit et bas-gauche). */
 .splash-ornament {
   position: absolute;
   z-index: 2;
@@ -188,6 +191,7 @@
   display: block;
   width: 100%;
   height: auto;
+  user-select: none;
 }
 
 .splash-ornament-tr {
@@ -195,6 +199,7 @@
   right: 0;
   width: min(13vw, 196px);
   opacity: 0.55;
+  transform: scaleX(-1) rotate(-90deg);
 }
 
 .splash-ornament-bl {
@@ -202,6 +207,7 @@
   left: 0;
   width: min(13.5vw, 210px);
   opacity: 0.48;
+  transform: scaleX(-1) rotate(90deg);
 }
 
 /* --- 6) Contenu central : marque & chargement --------------------------- */

@@ -3,8 +3,7 @@ import "./SplashScreen.css";
 import monogramUrl from "../assets/logo.png";
 import monumentUrl from "../assets/splash/maqam-echahid.webp";
 import chequeUrl from "../assets/splash/cheque-decoration.svg";
-import ornamentTopRightUrl from "../assets/splash/ornament-top-right.svg";
-import ornamentBottomLeftUrl from "../assets/splash/ornament-bottom-left.svg";
+import ornamentUrl from "../assets/splash/ornament.webp";
 
 const FADE_OUT_MS = 480;
 
@@ -200,10 +199,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
 
       {/* 5) Ornements géométriques des coins */}
       <div className="splash-ornament splash-ornament-tr" aria-hidden="true">
-        <img src={ornamentTopRightUrl} alt="" draggable={false} />
+        <img src={ornamentUrl} alt="" draggable={false} />
       </div>
       <div className="splash-ornament splash-ornament-bl" aria-hidden="true">
-        <img src={ornamentBottomLeftUrl} alt="" draggable={false} />
+        <img src={ornamentUrl} alt="" draggable={false} />
       </div>
 
       {/* 6) Marque, produit, description, chargement */}
