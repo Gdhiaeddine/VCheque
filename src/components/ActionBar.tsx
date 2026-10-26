@@ -1,5 +1,5 @@
 import React from "react";
-import { Edit3, Save, Printer, PlusCircle, CheckCircle2, Clock, FileDown } from "lucide-react";
+import { Edit3, Save, Printer, PlusCircle, CheckCircle2, Clock, FileDown, CreditCard } from "lucide-react";
 import type { ChequeStatus } from "../types";
 
 interface ActionBarProps {
@@ -8,6 +8,7 @@ interface ActionBarProps {
   onPrint: () => void;
   onExportPdf?: () => void;
   onNew?: () => void;
+  onOpenBankAccounts?: () => void;
   showNewButton?: boolean;
   activeStatus?: ChequeStatus | null;
   printCount?: number;
@@ -19,6 +20,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onPrint,
   onExportPdf,
   onNew,
+  onOpenBankAccounts,
   showNewButton = true,
   activeStatus,
   printCount = 0
@@ -56,6 +58,18 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           <Save size={16} className="btn-action-icon" />
           <span>{activeStatus ? "Mettre à jour" : "Enregistrer"}</span>
         </button>
+
+        {onOpenBankAccounts && (
+          <button
+            type="button"
+            className="btn-action-card"
+            onClick={onOpenBankAccounts}
+            title="Gérer les comptes bancaires émetteurs et les chéquiers"
+          >
+            <CreditCard size={16} className="btn-action-icon" />
+            <span>Comptes & Chéquiers</span>
+          </button>
+        )}
 
         {activeStatus && (
           <div className="active-cheque-badge-wrapper" title="Statut du chèque en cours d'édition">

@@ -63,6 +63,7 @@ export type ChequeAuditEventType =
 export interface ChequeAuditEvent {
   id: string;
   chequeId: string;
+  companyId?: string;
   eventType: ChequeAuditEventType;
   title: string;              // Ex: "Création du chèque", "Tirage d'impression N°2", "Changement de statut"
   description?: string;        // Détails lisibles
@@ -84,6 +85,7 @@ export interface ChequeAuditEvent {
 export interface PrintAttemptRecord {
   id: string;
   chequeId: string;
+  companyId?: string;
   beneficiary: string;
   amount: string;
   bankName: string;
@@ -99,6 +101,9 @@ export interface PrintAttemptRecord {
 
 export interface ChequeRecord {
   id: string;
+  companyId?: string;
+  accountId?: string;
+  chequeBookId?: string;
   amount: string;
   beneficiary: string;
   place: string;
@@ -125,14 +130,71 @@ export interface ChequeRecord {
 
 export interface BeneficiaryRecord {
   id: string;
+  companyId?: string;
   name: string;
   nickname?: string;
   phone?: string;
+  rib?: string;
   note?: string;
   usageCount: number;
   lastUsedAt?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface CompanyRecord {
+  id: string;
+  name: string;
+  legalForm?: string; // SARL, EURL, SPA, SNC, etc.
+  nif?: string;
+  nis?: string;
+  rc?: string;
+  articleImposition?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  logoUrl?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface BankAccountRecord {
+  id: string;
+  companyId: string;
+  bankTemplateId: string;
+  label: string; // Ex: "Compte Courant Principal BNA"
+  ribOrIban: string; // Ex: 20 chiffres
+  agency?: string; // Ex: "Agence Didouche Mourad (0012)"
+  balance: number; // Solde actuel
+  currency: string; // "DZD"
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ChequeBookRecord {
+  id: string;
+  accountId: string;
+  seriesName: string; // Ex: "Chéquier 2026-A"
+  startNumber: string; // Ex: "0048201"
+  endNumber: string; // Ex: "0048250"
+  currentNumber: string; // Prochain chèque disponible
+  leavesTotal: number;
+  leavesUsed: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface ChequeAttachmentRecord {
+  id: string;
+  chequeId: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  localPath?: string;
+  dataBase64?: string;
+  createdAt: string;
 }
 
 export type PrintPlacement =

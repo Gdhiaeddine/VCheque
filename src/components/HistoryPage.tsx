@@ -9,6 +9,7 @@ import {
   FileText,
   Clock,
   ArrowLeft,
+  ArrowRight,
   Building2,
   ChevronLeft,
   ChevronRight,
@@ -29,12 +30,14 @@ import {
   ChevronDown,
   Filter,
   PlusCircle,
-  Save
+  Save,
+  Paperclip
 } from "lucide-react";
 import type { ChequeRecord, ChequeStatus, BankTemplate, PrintAttemptRecord, PrintAttemptStatus, ChequeAuditEvent, ChequeAuditEventType } from "../types";
 import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
 import { exportChequeToPdf } from "../services/pdfExport";
 import { defaultBankTemplates } from "../banksData";
+import { ChequeAttachmentModal } from "./ChequeAttachmentModal";
 import {
   getPaginatedCheques,
   getAllFilteredCheques,
@@ -102,6 +105,9 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   const [chequeToCancel, setChequeToCancel] = useState<ChequeRecord | null>(null);
   const [cancelReasonPreset, setCancelReasonPreset] = useState<string>("Erreur sur le montant");
   const [cancelCustomReason, setCancelCustomReason] = useState<string>("");
+
+  // Modal des pièces jointes (factures / justificatifs)
+  const [attachmentCheque, setAttachmentCheque] = useState<ChequeRecord | null>(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -423,9 +429,14 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         return <span className="audit-badge updated">Modification</span>;
       case "status_changed":
         return (
-          <span className="audit-badge status_changed">
-            {event.fromStatus && `${STATUS_LABELS[event.fromStatus] || event.fromStatus} ➔ `}
-            {STATUS_LABELS[event.toStatus || "saved"] || event.toStatus}
+          <span className="audit-badge status_changed" style={{ display: "inline-flex", alignItems: "center", gap: "3px" }}>
+            {event.fromStatus && (
+              <>
+                <span>{STATUS_LABELS[event.fromStatus] || event.fromStatus}</span>
+                <ArrowRight size={11} />
+              </>
+            )}
+            <span>{STATUS_LABELS[event.toStatus || "saved"] || event.toStatus}</span>
           </span>
         );
       case "printed":
@@ -1090,6 +1101,15 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                         title="Consulter les tentatives et traces d'impression de ce chèque"
                       >
                         <ShieldCheck size={14} />
+                      </button>
+
+                      <button
+                        type="button"
+                        className="ht-act attachment"
+                        onClick={() => setAttachmentCheque(item)}
+                        title="Gérer les factures et pièces justificatives associées"
+                      >
+                        <Paperclip size={14} />
                       </button>
 
                       <button
@@ -1867,6 +1887,14 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             <X size={14} />
           </button>
         </div>
+      )}
+      {/* Modal des pièces jointes & factures */}
+      {attachmentCheque && (
+        <ChequeAttachmentModal
+          cheque={attachmentCheque}
+          isOpen={Boolean(attachmentCheque)}
+          onClose={() => setAttachmentCheque(null)}
+        />
       )}
     </div>
   );

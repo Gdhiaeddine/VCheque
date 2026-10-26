@@ -1,11 +1,18 @@
 import React from "react";
-import { Settings, ShieldCheck } from "lucide-react";
+import { Settings, ShieldCheck, Building2, ChevronDown } from "lucide-react";
+import type { CompanyRecord } from "../types";
 
 interface TopBarProps {
   onOpenSettings: () => void;
+  activeCompany?: CompanyRecord | null;
+  onOpenCompanyManager?: () => void;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ onOpenSettings }) => {
+export const TopBar: React.FC<TopBarProps> = ({
+  onOpenSettings,
+  activeCompany,
+  onOpenCompanyManager
+}) => {
   return (
     <header className="app-topbar">
       <div className="topbar-left">
@@ -21,6 +28,26 @@ export const TopBar: React.FC<TopBarProps> = ({ onOpenSettings }) => {
       </div>
 
       <div className="topbar-right">
+        {onOpenCompanyManager && (
+          <button
+            type="button"
+            className="topbar-company-btn"
+            onClick={onOpenCompanyManager}
+            title="Changer d'entreprise / Gérer les dossiers d'entreprises"
+          >
+            <div className="company-btn-icon-wrapper">
+              <Building2 size={14} className="company-btn-icon" />
+            </div>
+            <div className="company-btn-text">
+              <span className="company-btn-label">Entreprise active :</span>
+              <span className="company-btn-name">
+                {activeCompany?.name || "Mon Entreprise"}
+              </span>
+            </div>
+            <ChevronDown size={14} className="company-btn-chevron" />
+          </button>
+        )}
+
         <div className="topbar-badge">
           <ShieldCheck size={14} className="badge-icon-green" />
           <span>Données 100% locales</span>

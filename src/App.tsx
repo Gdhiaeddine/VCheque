@@ -12,12 +12,14 @@ import { CalibrationPanel } from "./components/CalibrationPanel";
 import { ActionBar } from "./components/ActionBar";
 import { amountInFrenchWords, splitWordsByLimit, formatNumericAmount } from "./moneyToWords";
 import { defaultBankTemplates, defaultPositions } from "./banksData";
-import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, ChequeStatus, AppSettings, PrintAttemptRecord } from "./types";
+import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, ChequeStatus, AppSettings, PrintAttemptRecord, CompanyRecord, BankAccountRecord } from "./types";
 import { PrintModal, getPaperDimensions, calculateChequePosition } from "./components/PrintModal";
 import { PrintConfirmationModal } from "./components/PrintConfirmationModal";
 import { ExportPdfModal } from "./components/ExportPdfModal";
 import { SplashScreen } from "./components/SplashScreen";
-import { saveChequeRecord, findDuplicateCheque, autoRecordBeneficiary, logPrintAttempt, updatePrintAttemptStatus } from "./services/db";
+import { CompanyManagerModal } from "./components/CompanyManagerModal";
+import { BankAccountsModal } from "./components/BankAccountsModal";
+import { saveChequeRecord, findDuplicateCheque, autoRecordBeneficiary, logPrintAttempt, updatePrintAttemptStatus, getActiveCompany } from "./services/db";
 import { loadTemplatesFromConfigFile, saveTemplatesToConfigFile, LOCAL_TEMPLATES_KEY } from "./services/templatesConfig";
 import { loadAppSettings, saveAppSettings, resetAppSettings } from "./services/appSettings";
 import { exportChequeToPdf } from "./services/pdfExport";
@@ -198,6 +200,12 @@ export default function App() {
   // Modal d'exportation PDF avec choix du format et options
   const [isExportPdfModalOpen, setIsExportPdfModalOpen] = useState<boolean>(false);
 
+  // Multi-dossiers d'entreprise & Comptes bancaires
+  const [activeCompany, setActiveCompany] = useState<CompanyRecord | null>(null);
+  const [showCompanyModal, setShowCompanyModal] = useState<boolean>(false);
+  const [showBankAccountsModal, setShowBankAccountsModal] = useState<boolean>(false);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+
   // 6. Feedback / Toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null);
 
@@ -225,6 +233,27 @@ export default function App() {
       })
       .catch((err) => console.error("Erreur chargement modèles config:", err))
       .finally(() => setInitReady(true));
+  }, []);
+
+  // Multi-sociétés : chargement de l'entreprise active et écoute des changements de dossier
+  useEffect(() => {
+    const loadCompany = async () => {
+      try {
+        const comp = await getActiveCompany();
+        setActiveCompany(comp);
+      } catch (err) {
+        console.warn("Erreur chargement active company:", err);
+      }
+    };
+    loadCompany();
+
+    const handleCompanyChanged = (e: any) => {
+      loadCompany();
+      setHistoryRefreshTrigger((n) => n + 1);
+    };
+
+    window.addEventListener("vcheque:company-changed", handleCompanyChanged);
+    return () => window.removeEventListener("vcheque:company-changed", handleCompanyChanged);
   }, []);
 
   // Persist templates to external JSON configuration file (not db) so user can copy and backup
@@ -416,6 +445,8 @@ export default function App() {
 
     const newRecord: ChequeRecord = {
       id: recordId,
+      companyId: activeCompany?.id || "company-default",
+      accountId: selectedAccountId || undefined,
       amount,
       beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
       place: place.trim() || "Alger",
@@ -841,7 +872,11 @@ export default function App() {
       {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} initReady={initReady} />}
 
       {/* 1. Barre supérieure */}
-      <TopBar onOpenSettings={() => setActiveTab("settings")} />
+      <TopBar
+        onOpenSettings={() => setActiveTab("settings")}
+        activeCompany={activeCompany}
+        onOpenCompanyManager={() => setShowCompanyModal(true)}
+      />
 
       {/* 2. Corps de l'application (Barre latérale + Zone centrale + Colonne droite) */}
       <div className="app-body">
@@ -939,6 +974,7 @@ export default function App() {
                 onEdit={handleEditFocus}
                 onSave={handleSave}
                 onPrint={handlePrint}
+                onOpenBankAccounts={() => setShowBankAccountsModal(true)}
                 onExportPdf={() => {
                   const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
                   if (isNaN(rawVal) || rawVal <= 0) {
@@ -1388,6 +1424,38 @@ export default function App() {
           onRetryPrint={handlePostPrintRetry}
         />
       )}
+
+      {/* Modal Multi-sociétés / Gestion des dossiers d'entreprises */}
+      <CompanyManagerModal
+        isOpen={showCompanyModal}
+        onClose={() => setShowCompanyModal(false)}
+        onCompanyChanged={(comp) => {
+          setActiveCompany(comp);
+          setToast({
+            message: `Dossier actif basculé sur "${comp.name}".`,
+            type: "info"
+          });
+        }}
+      />
+
+      {/* Modal Comptes bancaires & Chéquiers */}
+      <BankAccountsModal
+        isOpen={showBankAccountsModal}
+        onClose={() => setShowBankAccountsModal(false)}
+        templates={templates}
+        onAccountSelected={(acc, nextChequeNum) => {
+          setSelectedAccountId(acc.id);
+          setSelectedTemplateId(acc.bankTemplateId);
+          if (nextChequeNum) {
+            setChequeNumber(nextChequeNum);
+            setShowChequeNumber(true);
+          }
+          setToast({
+            message: `Compte "${acc.label}" sélectionné (Banque : ${acc.bankTemplateId.toUpperCase()}).`,
+            type: "info"
+          });
+        }}
+      />
 
       {/* Dedicated Print Layer (Hidden on screen, exact 100% physical mm on printer) */}
       {(() => {

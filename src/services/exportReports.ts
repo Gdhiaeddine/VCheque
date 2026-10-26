@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { invoke } from "@tauri-apps/api/core";
-import type { ChequeRecord, ChequeStatus } from "../types";
+import type { ChequeRecord, ChequeStatus, BeneficiaryRecord } from "../types";
 import { amountInFrenchWords } from "../moneyToWords";
 
 export const STATUS_LABELS: Record<ChequeStatus, string> = {
@@ -16,6 +16,10 @@ export const STATUS_LABELS: Record<ChequeStatus, string> = {
 export interface ExportReportOptions {
   customFilename?: string;
   filterSummary?: string;
+  activeFilterSummary?: string;
+  reportTitle?: string;
+  reportSubtitle?: string;
+  companyName?: string;
 }
 
 export interface ExportResult {
@@ -291,12 +295,14 @@ export async function exportChequesToExcel(
   let rowsXml = "";
 
   // 1. Bloc d'en-tête informatif sur les filtres appliqués
+  const excelTitle = opt.reportTitle || "CHÈQUE STUDIO ALGÉRIE — ÉTAT RÉCAPITULATIF DES CHÈQUES";
+  const excelSubtitle = opt.reportSubtitle || `Filtres appliqués : ${opt.filterSummary || opt.activeFilterSummary || "Tous les chèques (aucun filtre spécifique)"}`;
   rowsXml += `    <Row ss:Height="24">\n`;
-  rowsXml += `      <Cell ss:MergeAcross="10" ss:StyleID="TitleCell"><Data ss:Type="String">CHÈQUE STUDIO ALGÉRIE — ÉTAT RÉCAPITULATIF DES CHÈQUES</Data></Cell>\n`;
+  rowsXml += `      <Cell ss:MergeAcross="10" ss:StyleID="TitleCell"><Data ss:Type="String">${sanitizeXml(excelTitle)}</Data></Cell>\n`;
   rowsXml += `    </Row>\n`;
 
   rowsXml += `    <Row ss:Height="18">\n`;
-  rowsXml += `      <Cell ss:MergeAcross="10" ss:StyleID="SubtitleCell"><Data ss:Type="String">Filtres appliqués : ${sanitizeXml(opt.filterSummary || "Tous les chèques (aucun filtre spécifique)")}</Data></Cell>\n`;
+  rowsXml += `      <Cell ss:MergeAcross="10" ss:StyleID="SubtitleCell"><Data ss:Type="String">${sanitizeXml(excelSubtitle)}</Data></Cell>\n`;
   rowsXml += `    </Row>\n`;
 
   rowsXml += `    <Row ss:Height="18">\n`;
@@ -486,7 +492,8 @@ export async function exportChequesToPdf(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
   doc.setTextColor(42, 36, 28); // Dark gold
-  doc.text("CHÈQUE STUDIO ALGÉRIE — ÉTAT RÉCAPITULATIF DES CHÈQUES", margin, y);
+  const pdfTitle = opt.reportTitle || "CHÈQUE STUDIO ALGÉRIE — ÉTAT RÉCAPITULATIF DES CHÈQUES";
+  doc.text(pdfTitle, margin, y);
 
   // Date et heure d'édition
   doc.setFont("helvetica", "normal");
@@ -501,7 +508,7 @@ export async function exportChequesToPdf(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.5);
   doc.setTextColor(172, 137, 70); // Accent gold
-  const filterSummaryText = `Filtres appliqués : ${opt.filterSummary || "Tous les chèques (aucun filtre spécifique)"}`;
+  const filterSummaryText = opt.reportSubtitle || `Filtres appliqués : ${opt.filterSummary || opt.activeFilterSummary || "Tous les chèques (aucun filtre spécifique)"}`;
   doc.text(filterSummaryText, margin, y);
 
   y += 5;
@@ -662,6 +669,112 @@ export async function exportChequesToPdf(
     filterName: "Document PDF (*.pdf)",
     filterExt: "pdf",
     mimeType: "application/pdf",
+    bytes
+  });
+}
+
+/**
+ * Exporte le carnet complet des bénéficiaires au format CSV (UTF-8 avec BOM)
+ */
+export async function exportBeneficiariesToCsv(
+  records: BeneficiaryRecord[],
+  customFilename?: string
+): Promise<ExportResult> {
+  const dateTag = new Date().toISOString().split("T")[0];
+  const filename = customFilename || `repertoire-beneficiaires-${dateTag}.csv`;
+
+  const headers = [
+    "Nom du bénéficiaire",
+    "Alias / Raison sociale",
+    "Téléphone",
+    "Compte / RIB",
+    "Notes",
+    "Chèques émis",
+    "Dernier chèque",
+    "Date d'enregistrement"
+  ];
+
+  const rows = records.map((b) => [
+    b.name,
+    b.nickname || "",
+    b.phone || "",
+    b.rib || "",
+    b.note ? b.note.replace(/\r?\n/g, " ") : "",
+    String(b.usageCount || 1),
+    b.lastUsedAt || "",
+    b.createdAt || ""
+  ]);
+
+  const escapeCsv = (val: string) => `"${val.replace(/"/g, '""')}"`;
+  const csvContent =
+    "\uFEFF" +
+    [headers.map(escapeCsv).join(";"), ...rows.map((r) => r.map(escapeCsv).join(";"))].join("\r\n");
+
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(csvContent);
+
+  return await saveExportFile({
+    defaultFilename: filename,
+    filterName: "Fichier CSV (*.csv)",
+    filterExt: "csv",
+    mimeType: "text/csv;charset=utf-8",
+    bytes
+  });
+}
+
+/**
+ * Exporte le carnet complet des bénéficiaires au format Excel natif (.xls)
+ */
+export async function exportBeneficiariesToExcel(
+  records: BeneficiaryRecord[],
+  customFilename?: string
+): Promise<ExportResult> {
+  const dateTag = new Date().toISOString().split("T")[0];
+  const filename = customFilename || `repertoire-beneficiaires-${dateTag}.xls`;
+
+  let html = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="utf-8" /></head>
+    <body>
+      <h2>Répertoire des bénéficiaires et fournisseurs</h2>
+      <table border="1" cellpadding="6" cellspacing="0">
+        <tr style="background:#2A241C;color:#FFFFFF;font-weight:bold;">
+          <th>Nom du bénéficiaire</th>
+          <th>Alias / Raison sociale</th>
+          <th>Téléphone</th>
+          <th>Compte / RIB</th>
+          <th>Notes</th>
+          <th>Chèques émis</th>
+          <th>Dernier chèque</th>
+          <th>Date d'ajout</th>
+        </tr>
+  `;
+
+  for (const b of records) {
+    html += `
+      <tr>
+        <td>${b.name}</td>
+        <td>${b.nickname || "—"}</td>
+        <td>${b.phone || "—"}</td>
+        <td style="mso-number-format:'\\@';">${b.rib || "—"}</td>
+        <td>${b.note || "—"}</td>
+        <td>${b.usageCount || 1}</td>
+        <td>${b.lastUsedAt ? b.lastUsedAt.split("T")[0] : "—"}</td>
+        <td>${b.createdAt ? b.createdAt.split("T")[0] : "—"}</td>
+      </tr>
+    `;
+  }
+
+  html += `</table></body></html>`;
+
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(html);
+
+  return await saveExportFile({
+    defaultFilename: filename,
+    filterName: "Classeur Excel (*.xls)",
+    filterExt: "xls",
+    mimeType: "application/vnd.ms-excel",
     bytes
   });
 }

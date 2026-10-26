@@ -1,10 +1,27 @@
 import Database from "@tauri-apps/plugin-sql";
-import type { ChequeRecord, ChequeStatus, BeneficiaryRecord, PrintAttemptRecord, PrintAttemptStatus, ChequeAuditEvent, ChequeAuditEventType } from "../types";
+import type {
+  ChequeRecord,
+  ChequeStatus,
+  BeneficiaryRecord,
+  PrintAttemptRecord,
+  PrintAttemptStatus,
+  ChequeAuditEvent,
+  ChequeAuditEventType,
+  CompanyRecord,
+  BankAccountRecord,
+  ChequeBookRecord,
+  ChequeAttachmentRecord
+} from "../types";
 
 export const HISTORIQUE_STORAGE_KEY = "cheque-studio-history-v1";
 export const BENEFICIARIES_STORAGE_KEY = "cheque-studio-beneficiaries-v1";
 export const PRINT_LOGS_STORAGE_KEY = "cheque-studio-print-logs-v1";
 export const EVENTS_STORAGE_KEY = "cheque-studio-cheque-events-v1";
+export const COMPANIES_STORAGE_KEY = "cheque-studio-companies-v1";
+export const BANK_ACCOUNTS_STORAGE_KEY = "cheque-studio-bank-accounts-v1";
+export const CHEQUE_BOOKS_STORAGE_KEY = "cheque-studio-cheque-books-v1";
+export const ATTACHMENTS_STORAGE_KEY = "cheque-studio-attachments-v1";
+export const ACTIVE_COMPANY_KEY = "vcheque_active_company_id";
 const DB_PATH = "sqlite:cheques.db";
 
 let dbInstance: Database | null = null;
@@ -18,6 +35,7 @@ function isTauriEnvironment(): boolean {
 export interface GetChequesParams {
   page: number; // 1-indexé
   pageSize: number;
+  companyId?: string;
   searchQuery?: string;
   statusFilter?: "all" | ChequeStatus;
   bankFilter?: string; // "all" ou id spécifique ("el-salam", "bna", etc.)
@@ -44,6 +62,7 @@ export interface HistoryStats {
 export interface GetBeneficiariesParams {
   page: number; // 1-indexé
   pageSize: number;
+  companyId?: string;
   searchQuery?: string;
 }
 
@@ -86,10 +105,47 @@ export async function getDatabase(): Promise<Database | null> {
   try {
     dbInstance = await Database.load(DB_PATH);
 
-    // 1. Créer la table si elle n'existe pas
+    // 0. Table des entreprises (Multi-sociétés)
+    await dbInstance.execute(`
+      CREATE TABLE IF NOT EXISTS companies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        legal_form TEXT,
+        nif TEXT,
+        nis TEXT,
+        rc TEXT,
+        article_imposition TEXT,
+        address TEXT,
+        phone TEXT,
+        email TEXT,
+        logo_url TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT
+      );
+    `);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_companies_active ON companies(is_active);`);
+
+    // Insérer l'entreprise par défaut si table vide
+    try {
+      const existingCompanies = await dbInstance.select<{ count: number }[]>(`SELECT COUNT(*) as count FROM companies;`);
+      if (!existingCompanies || existingCompanies[0]?.count === 0) {
+        const now = new Date().toISOString();
+        await dbInstance.execute(
+          `INSERT INTO companies (id, name, legal_form, is_active, created_at, updated_at)
+           VALUES ($1, $2, $3, 1, $4, $5);`,
+          ["company-default", "Mon Entreprise", "SARL", now, now]
+        );
+      }
+    } catch {}
+
+    // 1. Créer la table des chèques si elle n'existe pas
     await dbInstance.execute(`
       CREATE TABLE IF NOT EXISTS cheques (
         id TEXT PRIMARY KEY,
+        company_id TEXT DEFAULT 'company-default',
+        account_id TEXT,
+        cheque_book_id TEXT,
         amount TEXT NOT NULL,
         amount_numeric REAL NOT NULL,
         beneficiary TEXT NOT NULL,
@@ -109,6 +165,15 @@ export async function getDatabase(): Promise<Database | null> {
       );
     `);
 
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN company_id TEXT DEFAULT 'company-default';`);
+    } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN account_id TEXT;`);
+    } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN cheque_book_id TEXT;`);
+    } catch {}
     try {
       await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN is_crossed INTEGER DEFAULT 1;`);
     } catch {}
@@ -145,6 +210,7 @@ export async function getDatabase(): Promise<Database | null> {
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_status ON cheques(status);`);
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_beneficiary ON cheques(beneficiary);`);
     try {
+      await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_company ON cheques(company_id);`);
       await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_bank ON cheques(bank_template_id);`);
       await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_date ON cheques(date);`);
     } catch {}
@@ -153,9 +219,11 @@ export async function getDatabase(): Promise<Database | null> {
     await dbInstance.execute(`
       CREATE TABLE IF NOT EXISTS beneficiaries (
         id TEXT PRIMARY KEY,
+        company_id TEXT DEFAULT 'company-default',
         name TEXT NOT NULL UNIQUE,
         nickname TEXT,
         phone TEXT,
+        rib TEXT,
         note TEXT,
         usage_count INTEGER DEFAULT 1,
         last_used_at TEXT,
@@ -163,13 +231,23 @@ export async function getDatabase(): Promise<Database | null> {
         updated_at TEXT
       );
     `);
+    try {
+      await dbInstance.execute(`ALTER TABLE beneficiaries ADD COLUMN company_id TEXT DEFAULT 'company-default';`);
+    } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE beneficiaries ADD COLUMN rib TEXT;`);
+    } catch {}
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_beneficiaries_name ON beneficiaries(name);`);
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_beneficiaries_usage ON beneficiaries(usage_count DESC, last_used_at DESC);`);
+    try {
+      await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_beneficiaries_company ON beneficiaries(company_id);`);
+    } catch {}
 
     // 4. Table des journaux d'audit d'impression
     await dbInstance.execute(`
       CREATE TABLE IF NOT EXISTS print_logs (
         id TEXT PRIMARY KEY,
+        company_id TEXT DEFAULT 'company-default',
         cheque_id TEXT NOT NULL,
         beneficiary TEXT NOT NULL,
         amount TEXT NOT NULL,
@@ -184,13 +262,20 @@ export async function getDatabase(): Promise<Database | null> {
         copy_number INTEGER DEFAULT 1
       );
     `);
+    try {
+      await dbInstance.execute(`ALTER TABLE print_logs ADD COLUMN company_id TEXT DEFAULT 'company-default';`);
+    } catch {}
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_print_logs_cheque ON print_logs(cheque_id);`);
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_print_logs_date ON print_logs(attempted_at DESC);`);
+    try {
+      await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_print_logs_company ON print_logs(company_id);`);
+    } catch {}
 
     // 5. Table des événements d'audit complets du chèque
     await dbInstance.execute(`
       CREATE TABLE IF NOT EXISTS cheque_events (
         id TEXT PRIMARY KEY,
+        company_id TEXT DEFAULT 'company-default',
         cheque_id TEXT NOT NULL,
         event_type TEXT NOT NULL,
         title TEXT NOT NULL,
@@ -202,10 +287,63 @@ export async function getDatabase(): Promise<Database | null> {
         created_at TEXT NOT NULL
       );
     `);
+    try {
+      await dbInstance.execute(`ALTER TABLE cheque_events ADD COLUMN company_id TEXT DEFAULT 'company-default';`);
+    } catch {}
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheque_events_id ON cheque_events(cheque_id);`);
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheque_events_date ON cheque_events(created_at DESC);`);
 
-    // 6. Migration transparente depuis localStorage si les tables SQLite sont vides
+    // 6. Table des comptes bancaires de l'entreprise
+    await dbInstance.execute(`
+      CREATE TABLE IF NOT EXISTS bank_accounts (
+        id TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL,
+        bank_template_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        rib_or_iban TEXT NOT NULL,
+        agency TEXT,
+        balance REAL NOT NULL DEFAULT 0.0,
+        currency TEXT NOT NULL DEFAULT 'DZD',
+        is_default INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT
+      );
+    `);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_bank_accounts_company ON bank_accounts(company_id);`);
+
+    // 7. Table des chéquiers (souches de chèques)
+    await dbInstance.execute(`
+      CREATE TABLE IF NOT EXISTS cheque_books (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        series_name TEXT NOT NULL,
+        start_number TEXT NOT NULL,
+        end_number TEXT NOT NULL,
+        current_number TEXT NOT NULL,
+        leaves_total INTEGER NOT NULL,
+        leaves_used INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      );
+    `);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheque_books_account ON cheque_books(account_id);`);
+
+    // 8. Table des pièces jointes (factures / justificatifs)
+    await dbInstance.execute(`
+      CREATE TABLE IF NOT EXISTS cheque_attachments (
+        id TEXT PRIMARY KEY,
+        cheque_id TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        file_size INTEGER NOT NULL,
+        mime_type TEXT NOT NULL,
+        local_path TEXT,
+        data_base64 TEXT,
+        created_at TEXT NOT NULL
+      );
+    `);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheque_attachments_cheque ON cheque_attachments(cheque_id);`);
+
+    // 9. Migration transparente depuis localStorage si les tables SQLite sont vides
     await migrateFromLocalStorageIfEmpty(dbInstance);
     await migrateBeneficiariesIfEmpty(dbInstance);
 
@@ -354,6 +492,16 @@ function buildChequesWhereClause(params: GetChequesParams): { whereClause: strin
   const conditions: string[] = [];
   const queryParams: any[] = [];
 
+  // Cloisonnement par entreprise
+  const targetCompanyId = params.companyId || getActiveCompanyId();
+  if (targetCompanyId === "company-default") {
+    conditions.push("(company_id = ? OR company_id IS NULL OR company_id = '')");
+    queryParams.push(targetCompanyId);
+  } else {
+    conditions.push("company_id = ?");
+    queryParams.push(targetCompanyId);
+  }
+
   // Filtre de statut
   if (statusFilter && statusFilter !== "all") {
     if (statusFilter === "saved") {
@@ -486,7 +634,8 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
     const offset = Math.max(0, (page - 1) * pageSize);
     const selectSql = `
       SELECT 
-        id, amount, amount_numeric, beneficiary, place, date, cheque_number as chequeNumber,
+        id, company_id as companyId, account_id as accountId, cheque_book_id as chequeBookId,
+        amount, amount_numeric, beneficiary, place, date, cheque_number as chequeNumber,
         reference, cancellation_reason as cancellationReason, cancelled_at as cancelledAt,
         delivered_at as deliveredAt, cashed_at as cashedAt,
         bank_template_id as bankTemplateId, bank_name as bankName, status,
@@ -532,7 +681,8 @@ export async function getAllFilteredCheques(params: Omit<GetChequesParams, "page
     const { whereClause, queryParams } = buildChequesWhereClause({ ...params, page: 1, pageSize: 999999 });
     const selectSql = `
       SELECT 
-        id, amount, amount_numeric, beneficiary, place, date, cheque_number as chequeNumber,
+        id, company_id as companyId, account_id as accountId, cheque_book_id as chequeBookId,
+        amount, amount_numeric, beneficiary, place, date, cheque_number as chequeNumber,
         reference, cancellation_reason as cancellationReason, cancelled_at as cancelledAt,
         delivered_at as deliveredAt, cashed_at as cashedAt,
         bank_template_id as bankTemplateId, bank_name as bankName, status,
@@ -566,16 +716,20 @@ export async function saveChequeRecord(record: ChequeRecord): Promise<void> {
   if (db) {
     const rawVal = parseFloat((record.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
     const count = typeof record.printCount === "number" ? record.printCount : (record.status === "printed" ? 1 : 0);
+    const compId = record.companyId || getActiveCompanyId();
 
     await db.execute(
       `INSERT OR REPLACE INTO cheques (
-        id, amount, amount_numeric, beneficiary, place, date, cheque_number,
+        id, company_id, account_id, cheque_book_id, amount, amount_numeric, beneficiary, place, date, cheque_number,
         reference, cancellation_reason, cancelled_at, delivered_at, cashed_at,
         bank_template_id, bank_name, status, is_crossed, crossed_with_text,
         show_cheque_number, print_count, created_at, updated_at, printed_at, last_printed_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23);`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26);`,
       [
         record.id,
+        compId,
+        record.accountId || null,
+        record.chequeBookId || null,
         record.amount,
         rawVal,
         record.beneficiary,
@@ -861,6 +1015,15 @@ export async function getPaginatedBeneficiaries(params: GetBeneficiariesParams):
     const conditions: string[] = [];
     const queryParams: any[] = [];
 
+    const targetCompanyId = params.companyId || getActiveCompanyId();
+    if (targetCompanyId === "company-default") {
+      conditions.push("(company_id = ? OR company_id IS NULL OR company_id = '')");
+      queryParams.push(targetCompanyId);
+    } else {
+      conditions.push("company_id = ?");
+      queryParams.push(targetCompanyId);
+    }
+
     if (searchQuery.trim()) {
       const term = `%${searchQuery.trim().toLowerCase()}%`;
       conditions.push("(LOWER(name) LIKE ? OR (nickname IS NOT NULL AND LOWER(nickname) LIKE ?) OR (note IS NOT NULL AND LOWER(note) LIKE ?))");
@@ -876,15 +1039,15 @@ export async function getPaginatedBeneficiaries(params: GetBeneficiariesParams):
     const statsSql = `
       SELECT 
         COUNT(*) as total_count,
-        COALESCE((SELECT name FROM beneficiaries ORDER BY usage_count DESC LIMIT 1), '—') as most_used_name,
-        COALESCE((SELECT usage_count FROM beneficiaries ORDER BY usage_count DESC LIMIT 1), 0) as most_used_count
-      FROM beneficiaries;
+        COALESCE((SELECT name FROM beneficiaries ${whereClause} ORDER BY usage_count DESC LIMIT 1), '—') as most_used_name,
+        COALESCE((SELECT usage_count FROM beneficiaries ${whereClause} ORDER BY usage_count DESC LIMIT 1), 0) as most_used_count
+      FROM beneficiaries ${whereClause};
     `;
     const statsResult = await db.select<{
       total_count: number;
       most_used_name: string;
       most_used_count: number;
-    }[]>(statsSql);
+    }[]>(statsSql, [...queryParams, ...queryParams]);
 
     const rawStats = statsResult[0] || { total_count: 0, most_used_name: "—", most_used_count: 0 };
     const stats: BeneficiaryStats = {
@@ -896,7 +1059,7 @@ export async function getPaginatedBeneficiaries(params: GetBeneficiariesParams):
     const offset = Math.max(0, (page - 1) * pageSize);
     const selectSql = `
       SELECT 
-        id, name, nickname, phone, note,
+        id, company_id as companyId, name, nickname, phone, rib, note,
         usage_count as usageCount,
         last_used_at as lastUsedAt,
         created_at as createdAt,
@@ -1023,15 +1186,18 @@ export async function saveBeneficiaryRecord(record: BeneficiaryRecord): Promise<
   if (!db) return;
 
   const now = new Date().toISOString();
+  const compId = record.companyId || getActiveCompanyId();
   await db.execute(
     `INSERT OR REPLACE INTO beneficiaries (
-      id, name, nickname, phone, note, usage_count, last_used_at, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+      id, company_id, name, nickname, phone, rib, note, usage_count, last_used_at, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
     [
       record.id,
+      compId,
       record.name.trim(),
       record.nickname ? record.nickname.trim() : null,
       record.phone ? record.phone.trim() : null,
+      record.rib ? record.rib.trim() : null,
       record.note ? record.note.trim() : null,
       record.usageCount || 1,
       record.lastUsedAt || now,
@@ -1063,6 +1229,110 @@ export async function clearAllBeneficiaryRecords(): Promise<void> {
   if (!db) return;
 
   await db.execute("DELETE FROM beneficiaries;");
+}
+
+/**
+ * Récupère tous les bénéficiaires de l'entreprise (pour export complet Excel / CSV)
+ */
+export async function getAllBeneficiaries(companyId?: string): Promise<BeneficiaryRecord[]> {
+  const targetCompanyId = companyId || getActiveCompanyId();
+  const db = await getDatabase();
+  if (!db) {
+    const all = getLocalBeneficiaries();
+    return all.filter((b) => {
+      return targetCompanyId === "company-default"
+        ? (!b.companyId || b.companyId === "company-default")
+        : b.companyId === targetCompanyId;
+    });
+  }
+
+  try {
+    const companyClause = targetCompanyId === "company-default"
+      ? "(company_id = ? OR company_id IS NULL OR company_id = '')"
+      : "company_id = ?";
+    const rows = await db.select<BeneficiaryRecord[]>(
+      `SELECT id, company_id as companyId, name, nickname, phone, rib, note,
+              usage_count as usageCount, last_used_at as lastUsedAt, created_at as createdAt, updated_at as updatedAt
+       FROM beneficiaries
+       WHERE ${companyClause}
+       ORDER BY name ASC;`,
+      [targetCompanyId]
+    );
+    return rows || [];
+  } catch (err) {
+    console.warn("Erreur getAllBeneficiaries SQLite:", err);
+    return [];
+  }
+}
+
+export interface ImportBeneficiariesResult {
+  totalRead: number;
+  addedCount: number;
+  updatedCount: number;
+  errorCount: number;
+}
+
+/**
+ * Importe par lot des bénéficiaires depuis un tableau d'objets (CSV/Excel)
+ */
+export async function importBeneficiaries(
+  records: Array<{ name: string; nickname?: string; phone?: string; rib?: string; note?: string }>,
+  mode: "ignore" | "update" = "update",
+  companyId?: string
+): Promise<ImportBeneficiariesResult> {
+  const targetCompanyId = companyId || getActiveCompanyId();
+  let addedCount = 0;
+  let updatedCount = 0;
+  let errorCount = 0;
+
+  for (const item of records) {
+    const trimmed = (item.name || "").trim();
+    if (!trimmed) {
+      errorCount++;
+      continue;
+    }
+
+    try {
+      const existing = (await searchBeneficiaries(trimmed, 1)).find(
+        (b) => b.name.toLowerCase() === trimmed.toLowerCase()
+      );
+
+      if (existing) {
+        if (mode === "update") {
+          await saveBeneficiaryRecord({
+            ...existing,
+            companyId: targetCompanyId,
+            nickname: item.nickname?.trim() || existing.nickname,
+            phone: item.phone?.trim() || existing.phone,
+            rib: item.rib?.trim() || existing.rib,
+            note: item.note?.trim() || existing.note,
+            updatedAt: new Date().toISOString()
+          });
+          updatedCount++;
+        }
+      } else {
+        const id = "ben-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
+        const now = new Date().toISOString();
+        await saveBeneficiaryRecord({
+          id,
+          companyId: targetCompanyId,
+          name: trimmed,
+          nickname: item.nickname?.trim() || undefined,
+          phone: item.phone?.trim() || undefined,
+          rib: item.rib?.trim() || undefined,
+          note: item.note?.trim() || undefined,
+          usageCount: 1,
+          createdAt: now,
+          updatedAt: now
+        });
+        addedCount++;
+      }
+    } catch {
+      errorCount++;
+    }
+  }
+
+  return { totalRead: records.length, addedCount, updatedCount, errorCount };
 }
 
 /* ==========================================================================
@@ -1763,4 +2033,635 @@ export async function getChequeFullAuditTimeline(cheque: ChequeRecord): Promise<
 
   // Trier par ordre chronologique (du plus ancien au plus récent)
   return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
+
+/* ==========================================================================
+   MODULE MULTI-SOCIÉTÉS / MULTI-ENTREPRISES
+   ========================================================================== */
+
+export function getActiveCompanyId(): string {
+  try {
+    return localStorage.getItem(ACTIVE_COMPANY_KEY) || "company-default";
+  } catch {
+    return "company-default";
+  }
+}
+
+export function setActiveCompanyId(id: string): void {
+  try {
+    localStorage.setItem(ACTIVE_COMPANY_KEY, id);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("vcheque:company-changed", { detail: { companyId: id } }));
+    }
+  } catch (err) {
+    console.warn("Erreur setActiveCompanyId:", err);
+  }
+}
+
+function getLocalCompanies(): CompanyRecord[] {
+  try {
+    const raw = localStorage.getItem(COMPANIES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [
+    {
+      id: "company-default",
+      name: "Mon Entreprise",
+      legalForm: "SARL",
+      isActive: true,
+      createdAt: new Date().toISOString()
+    }
+  ];
+}
+
+function saveLocalCompany(company: CompanyRecord): void {
+  try {
+    const list = getLocalCompanies();
+    const idx = list.findIndex((c) => c.id === company.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...company, updatedAt: new Date().toISOString() };
+    } else {
+      list.push({ ...company, createdAt: company.createdAt || new Date().toISOString() });
+    }
+    localStorage.setItem(COMPANIES_STORAGE_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+function deleteLocalCompany(id: string): void {
+  try {
+    const list = getLocalCompanies().filter((c) => c.id !== id);
+    localStorage.setItem(COMPANIES_STORAGE_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+export async function getCompanies(): Promise<CompanyRecord[]> {
+  const db = await getDatabase();
+  if (!db) {
+    return getLocalCompanies();
+  }
+  try {
+    const rows = await db.select<any[]>(`SELECT * FROM companies ORDER BY name ASC;`);
+    if (!rows || rows.length === 0) {
+      const def = getLocalCompanies()[0];
+      await db.execute(
+        `INSERT OR IGNORE INTO companies (id, name, legal_form, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, 1, $4, $5);`,
+        [def.id, def.name, def.legalForm || null, def.createdAt, def.createdAt]
+      );
+      return [def];
+    }
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      legalForm: r.legal_form || undefined,
+      nif: r.nif || undefined,
+      nis: r.nis || undefined,
+      rc: r.rc || undefined,
+      articleImposition: r.article_imposition || undefined,
+      address: r.address || undefined,
+      phone: r.phone || undefined,
+      email: r.email || undefined,
+      logoUrl: r.logo_url || undefined,
+      isActive: Boolean(r.is_active),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at || undefined
+    }));
+  } catch (err) {
+    console.warn("Erreur lecture companies SQLite:", err);
+    return getLocalCompanies();
+  }
+}
+
+export async function getActiveCompany(): Promise<CompanyRecord | null> {
+  const activeId = getActiveCompanyId();
+  const list = await getCompanies();
+  return list.find((c) => c.id === activeId) || list[0] || null;
+}
+
+export async function saveCompanyRecord(company: CompanyRecord): Promise<void> {
+  saveLocalCompany(company);
+  const db = await getDatabase();
+  if (db) {
+    try {
+      const now = new Date().toISOString();
+      await db.execute(
+        `INSERT OR REPLACE INTO companies (
+          id, name, legal_form, nif, nis, rc, article_imposition,
+          address, phone, email, logo_url, is_active, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
+        [
+          company.id,
+          company.name.trim(),
+          company.legalForm?.trim() || null,
+          company.nif?.trim() || null,
+          company.nis?.trim() || null,
+          company.rc?.trim() || null,
+          company.articleImposition?.trim() || null,
+          company.address?.trim() || null,
+          company.phone?.trim() || null,
+          company.email?.trim() || null,
+          company.logoUrl || null,
+          company.isActive ? 1 : 0,
+          company.createdAt || now,
+          now
+        ]
+      );
+    } catch (err) {
+      console.warn("Erreur enregistrement company SQLite:", err);
+    }
+  }
+}
+
+export async function deleteCompanyRecord(id: string): Promise<boolean> {
+  if (id === "company-default") return false;
+  deleteLocalCompany(id);
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(`DELETE FROM companies WHERE id = $1;`, [id]);
+      await db.execute(`DELETE FROM cheques WHERE company_id = $1;`, [id]);
+      await db.execute(`DELETE FROM beneficiaries WHERE company_id = $1;`, [id]);
+      await db.execute(`DELETE FROM bank_accounts WHERE company_id = $1;`, [id]);
+    } catch (err) {
+      console.warn("Erreur suppression company SQLite:", err);
+    }
+  }
+  if (getActiveCompanyId() === id) {
+    setActiveCompanyId("company-default");
+  }
+  return true;
+}
+
+/* ==========================================================================
+   MODULE RELEVÉ DE COMPTE / AUDIT COMPLET PAR BÉNÉFICIAIRE
+   ========================================================================== */
+
+export interface BeneficiaryStatementResult {
+  beneficiary: BeneficiaryRecord | null;
+  totalAmountNumeric: number;
+  totalChequesCount: number;
+  cashedCount: number;
+  printedCount: number;
+  cancelledCount: number;
+  cheques: ChequeRecord[];
+}
+
+export async function getBeneficiaryStatement(beneficiaryName: string, companyId?: string): Promise<BeneficiaryStatementResult> {
+  const targetCompanyId = companyId || getActiveCompanyId();
+  const db = await getDatabase();
+  const trimmed = beneficiaryName.trim();
+
+  if (db) {
+    try {
+      const companyClause = targetCompanyId === "company-default"
+        ? "(company_id = ? OR company_id IS NULL OR company_id = '')"
+        : "company_id = ?";
+
+      const benRows = await db.select<any[]>(
+        `SELECT id, company_id as companyId, name, nickname, phone, rib, note,
+                usage_count as usageCount, last_used_at as lastUsedAt, created_at as createdAt, updated_at as updatedAt
+         FROM beneficiaries 
+         WHERE LOWER(name) = LOWER(?) AND ${companyClause} 
+         LIMIT 1;`,
+        [trimmed, targetCompanyId]
+      );
+      const benRecord: BeneficiaryRecord | null = benRows && benRows[0] ? benRows[0] : null;
+
+      const chequesRows = await db.select<any[]>(
+        `SELECT 
+          id, company_id as companyId, account_id as accountId, cheque_book_id as chequeBookId,
+          amount, amount_numeric, beneficiary, place, date, cheque_number as chequeNumber,
+          reference, cancellation_reason as cancellationReason, cancelled_at as cancelledAt,
+          delivered_at as deliveredAt, cashed_at as cashedAt,
+          bank_template_id as bankTemplateId, bank_name as bankName, status,
+          COALESCE(is_crossed, 1) = 1 as isCrossed,
+          COALESCE(crossed_with_text, 1) = 1 as crossedWithText,
+          COALESCE(show_cheque_number, 0) = 1 as showChequeNumber,
+          COALESCE(print_count, CASE WHEN status = 'printed' THEN 1 ELSE 0 END) as printCount,
+          created_at as createdAt, updated_at as updatedAt, printed_at as printedAt,
+          last_printed_at as lastPrintedAt
+        FROM cheques 
+        WHERE LOWER(beneficiary) = LOWER(?) AND ${companyClause} 
+        ORDER BY created_at DESC;`,
+        [trimmed, targetCompanyId]
+      );
+
+      const chequesList: ChequeRecord[] = chequesRows || [];
+
+      let totalAmountNumeric = 0;
+      let cashedCount = 0;
+      let printedCount = 0;
+      let cancelledCount = 0;
+
+      for (const ch of chequesList) {
+        const val = parseFloat((ch.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+        if (ch.status !== "annule") {
+          totalAmountNumeric += val;
+        }
+        if (ch.status === "encaisse") cashedCount++;
+        else if (ch.status === "printed" || ch.status === "remis") printedCount++;
+        else if (ch.status === "annule") cancelledCount++;
+      }
+
+      return {
+        beneficiary: benRecord,
+        totalAmountNumeric,
+        totalChequesCount: chequesList.length,
+        cashedCount,
+        printedCount,
+        cancelledCount,
+        cheques: chequesList
+      };
+    } catch (err) {
+      console.warn("Erreur getBeneficiaryStatement SQLite:", err);
+    }
+  }
+
+  // Fallback LocalStorage
+  const allCheques = getLocalRecords().filter((c) => {
+    const matchCompany = targetCompanyId === "company-default"
+      ? (!c.companyId || c.companyId === "company-default")
+      : c.companyId === targetCompanyId;
+    return matchCompany && c.beneficiary.trim().toLowerCase() === trimmed.toLowerCase();
+  });
+
+  const allBens = getLocalBeneficiaries();
+  const benRecord = allBens.find((b) => b.name.trim().toLowerCase() === trimmed.toLowerCase()) || null;
+
+  let totalAmountNumeric = 0;
+  let cashedCount = 0;
+  let printedCount = 0;
+  let cancelledCount = 0;
+
+  for (const ch of allCheques) {
+    const val = parseFloat((ch.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+    if (ch.status !== "annule") {
+      totalAmountNumeric += val;
+    }
+    if (ch.status === "encaisse") cashedCount++;
+    else if (ch.status === "printed" || ch.status === "remis") printedCount++;
+    else if (ch.status === "annule") cancelledCount++;
+  }
+
+  return {
+    beneficiary: benRecord,
+    totalAmountNumeric,
+    totalChequesCount: allCheques.length,
+    cashedCount,
+    printedCount,
+    cancelledCount,
+    cheques: allCheques
+  };
+}
+
+/* ==========================================================================
+   MODULE COMPTES BANCAIRES & CHÉQUIERS
+   ========================================================================== */
+
+function getLocalBankAccounts(companyId: string): BankAccountRecord[] {
+  try {
+    const raw = localStorage.getItem(BANK_ACCOUNTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((a) => a.companyId === companyId);
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalBankAccount(account: BankAccountRecord): void {
+  try {
+    const raw = localStorage.getItem(BANK_ACCOUNTS_STORAGE_KEY);
+    const list: BankAccountRecord[] = raw ? JSON.parse(raw) : [];
+    if (account.isDefault) {
+      list.forEach((a) => {
+        if (a.companyId === account.companyId) a.isDefault = false;
+      });
+    }
+    const idx = list.findIndex((a) => a.id === account.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...account, updatedAt: new Date().toISOString() };
+    } else {
+      list.push({ ...account, createdAt: account.createdAt || new Date().toISOString() });
+    }
+    localStorage.setItem(BANK_ACCOUNTS_STORAGE_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+function deleteLocalBankAccount(id: string): void {
+  try {
+    const raw = localStorage.getItem(BANK_ACCOUNTS_STORAGE_KEY);
+    if (!raw) return;
+    const list: BankAccountRecord[] = JSON.parse(raw);
+    localStorage.setItem(BANK_ACCOUNTS_STORAGE_KEY, JSON.stringify(list.filter((a) => a.id !== id)));
+  } catch {}
+}
+
+export async function getBankAccounts(companyId?: string): Promise<BankAccountRecord[]> {
+  const targetCompanyId = companyId || getActiveCompanyId();
+  const db = await getDatabase();
+  if (!db) return getLocalBankAccounts(targetCompanyId);
+
+  try {
+    const companyClause = targetCompanyId === "company-default"
+      ? "(company_id = ? OR company_id IS NULL OR company_id = '')"
+      : "company_id = ?";
+    const rows = await db.select<any[]>(
+      `SELECT * FROM bank_accounts WHERE ${companyClause} ORDER BY is_default DESC, label ASC;`,
+      [targetCompanyId]
+    );
+    return (rows || []).map((r) => ({
+      id: r.id,
+      companyId: r.company_id,
+      bankTemplateId: r.bank_template_id,
+      label: r.label,
+      ribOrIban: r.rib_or_iban,
+      agency: r.agency || undefined,
+      balance: Number(r.balance) || 0,
+      currency: r.currency || "DZD",
+      isDefault: Boolean(r.is_default),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at || undefined
+    }));
+  } catch (err) {
+    console.warn("Erreur getBankAccounts SQLite:", err);
+    return getLocalBankAccounts(targetCompanyId);
+  }
+}
+
+export async function saveBankAccount(account: BankAccountRecord): Promise<void> {
+  saveLocalBankAccount(account);
+  const db = await getDatabase();
+  if (db) {
+    try {
+      const now = new Date().toISOString();
+      if (account.isDefault) {
+        await db.execute(`UPDATE bank_accounts SET is_default = 0 WHERE company_id = $1;`, [account.companyId]);
+      }
+      await db.execute(
+        `INSERT OR REPLACE INTO bank_accounts (
+          id, company_id, bank_template_id, label, rib_or_iban, agency,
+          balance, currency, is_default, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
+        [
+          account.id,
+          account.companyId,
+          account.bankTemplateId,
+          account.label,
+          account.ribOrIban,
+          account.agency || null,
+          account.balance,
+          account.currency || "DZD",
+          account.isDefault ? 1 : 0,
+          account.createdAt || now,
+          now
+        ]
+      );
+    } catch (err) {
+      console.warn("Erreur saveBankAccount SQLite:", err);
+    }
+  }
+}
+
+export async function deleteBankAccount(id: string): Promise<void> {
+  deleteLocalBankAccount(id);
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(`DELETE FROM bank_accounts WHERE id = $1;`, [id]);
+      await db.execute(`DELETE FROM cheque_books WHERE account_id = $1;`, [id]);
+    } catch (err) {
+      console.warn("Erreur deleteBankAccount SQLite:", err);
+    }
+  }
+}
+
+// Chéquiers
+function getLocalChequeBooks(accountId: string): ChequeBookRecord[] {
+  try {
+    const raw = localStorage.getItem(CHEQUE_BOOKS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((b) => b.accountId === accountId);
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalChequeBook(book: ChequeBookRecord): void {
+  try {
+    const raw = localStorage.getItem(CHEQUE_BOOKS_STORAGE_KEY);
+    const list: ChequeBookRecord[] = raw ? JSON.parse(raw) : [];
+    if (book.isActive) {
+      list.forEach((b) => {
+        if (b.accountId === book.accountId) b.isActive = false;
+      });
+    }
+    const idx = list.findIndex((b) => b.id === book.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...book };
+    } else {
+      list.push(book);
+    }
+    localStorage.setItem(CHEQUE_BOOKS_STORAGE_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+export async function getChequeBooks(accountId: string): Promise<ChequeBookRecord[]> {
+  const db = await getDatabase();
+  if (!db) return getLocalChequeBooks(accountId);
+  try {
+    const rows = await db.select<any[]>(
+      `SELECT * FROM cheque_books WHERE account_id = $1 ORDER BY is_active DESC, created_at DESC;`,
+      [accountId]
+    );
+    return (rows || []).map((r) => ({
+      id: r.id,
+      accountId: r.account_id,
+      seriesName: r.series_name,
+      startNumber: r.start_number,
+      endNumber: r.end_number,
+      currentNumber: r.current_number,
+      leavesTotal: r.leaves_total,
+      leavesUsed: r.leaves_used,
+      isActive: Boolean(r.is_active),
+      createdAt: r.created_at
+    }));
+  } catch (err) {
+    console.warn("Erreur getChequeBooks SQLite:", err);
+    return getLocalChequeBooks(accountId);
+  }
+}
+
+export async function saveChequeBook(book: ChequeBookRecord): Promise<void> {
+  saveLocalChequeBook(book);
+  const db = await getDatabase();
+  if (db) {
+    try {
+      if (book.isActive) {
+        await db.execute(`UPDATE cheque_books SET is_active = 0 WHERE account_id = $1;`, [book.accountId]);
+      }
+      await db.execute(
+        `INSERT OR REPLACE INTO cheque_books (
+          id, account_id, series_name, start_number, end_number,
+          current_number, leaves_total, leaves_used, is_active, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+        [
+          book.id,
+          book.accountId,
+          book.seriesName,
+          book.startNumber,
+          book.endNumber,
+          book.currentNumber,
+          book.leavesTotal,
+          book.leavesUsed,
+          book.isActive ? 1 : 0,
+          book.createdAt
+        ]
+      );
+    } catch (err) {
+      console.warn("Erreur saveChequeBook SQLite:", err);
+    }
+  }
+}
+
+export async function incrementChequeBookNumber(bookId: string): Promise<string | null> {
+  const db = await getDatabase();
+  if (!db) {
+    const raw = localStorage.getItem(CHEQUE_BOOKS_STORAGE_KEY);
+    if (!raw) return null;
+    const list: ChequeBookRecord[] = JSON.parse(raw);
+    const item = list.find((b) => b.id === bookId);
+    if (!item) return null;
+    const currentNum = parseInt(item.currentNumber, 10);
+    const endNum = parseInt(item.endNumber, 10);
+    if (!isNaN(currentNum) && currentNum < endNum) {
+      const nextNum = String(currentNum + 1).padStart(item.currentNumber.length, "0");
+      item.currentNumber = nextNum;
+      item.leavesUsed += 1;
+      localStorage.setItem(CHEQUE_BOOKS_STORAGE_KEY, JSON.stringify(list));
+      return nextNum;
+    }
+    return null;
+  }
+
+  try {
+    const rows = await db.select<any[]>(`SELECT * FROM cheque_books WHERE id = $1 LIMIT 1;`, [bookId]);
+    if (!rows || rows.length === 0) return null;
+    const item = rows[0];
+    const currentNum = parseInt(item.current_number, 10);
+    const endNum = parseInt(item.end_number, 10);
+    if (!isNaN(currentNum) && currentNum < endNum) {
+      const nextNum = String(currentNum + 1).padStart(item.current_number.length, "0");
+      await db.execute(
+        `UPDATE cheque_books SET current_number = $1, leaves_used = leaves_used + 1 WHERE id = $2;`,
+        [nextNum, bookId]
+      );
+      return nextNum;
+    }
+    return null;
+  } catch (err) {
+    console.warn("Erreur incrementChequeBookNumber SQLite:", err);
+    return null;
+  }
+}
+
+/* ==========================================================================
+   MODULE PIÈCES JOINTES (FACTURES & JUSTIFICATIFS NUMÉRIQUES)
+   ========================================================================== */
+
+function getLocalChequeAttachments(chequeId: string): ChequeAttachmentRecord[] {
+  try {
+    const raw = localStorage.getItem(ATTACHMENTS_STORAGE_KEY);
+    if (!raw) return [];
+    const list: ChequeAttachmentRecord[] = JSON.parse(raw);
+    return list.filter((a) => a.chequeId === chequeId);
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalChequeAttachment(att: ChequeAttachmentRecord): void {
+  try {
+    const raw = localStorage.getItem(ATTACHMENTS_STORAGE_KEY);
+    const list: ChequeAttachmentRecord[] = raw ? JSON.parse(raw) : [];
+    const idx = list.findIndex((a) => a.id === att.id);
+    if (idx >= 0) {
+      list[idx] = att;
+    } else {
+      list.push(att);
+    }
+    localStorage.setItem(ATTACHMENTS_STORAGE_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+function deleteLocalChequeAttachment(id: string): void {
+  try {
+    const raw = localStorage.getItem(ATTACHMENTS_STORAGE_KEY);
+    if (!raw) return;
+    const list: ChequeAttachmentRecord[] = JSON.parse(raw);
+    localStorage.setItem(ATTACHMENTS_STORAGE_KEY, JSON.stringify(list.filter((a) => a.id !== id)));
+  } catch {}
+}
+
+export async function getChequeAttachments(chequeId: string): Promise<ChequeAttachmentRecord[]> {
+  const db = await getDatabase();
+  if (!db) return getLocalChequeAttachments(chequeId);
+  try {
+    const rows = await db.select<any[]>(
+      `SELECT id, cheque_id as chequeId, file_name as fileName, file_size as fileSize,
+              mime_type as mimeType, local_path as localPath, data_base64 as dataBase64, created_at as createdAt
+       FROM cheque_attachments 
+       WHERE cheque_id = $1 
+       ORDER BY created_at DESC;`,
+      [chequeId]
+    );
+    return rows || [];
+  } catch (err) {
+    console.warn("Erreur getChequeAttachments SQLite:", err);
+    return getLocalChequeAttachments(chequeId);
+  }
+}
+
+export async function saveChequeAttachment(att: ChequeAttachmentRecord): Promise<void> {
+  saveLocalChequeAttachment(att);
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(
+        `INSERT OR REPLACE INTO cheque_attachments (
+          id, cheque_id, file_name, file_size, mime_type, local_path, data_base64, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        [
+          att.id,
+          att.chequeId,
+          att.fileName,
+          att.fileSize,
+          att.mimeType,
+          att.localPath || null,
+          att.dataBase64 || null,
+          att.createdAt
+        ]
+      );
+    } catch (err) {
+      console.warn("Erreur saveChequeAttachment SQLite:", err);
+    }
+  }
+}
+
+export async function deleteChequeAttachment(id: string): Promise<void> {
+  deleteLocalChequeAttachment(id);
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(`DELETE FROM cheque_attachments WHERE id = $1;`, [id]);
+    } catch (err) {
+      console.warn("Erreur deleteChequeAttachment SQLite:", err);
+    }
+  }
 }

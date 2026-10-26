@@ -493,7 +493,7 @@ function optimizeLogoFile(file: File): Promise<string> {
                         <img src={editingTemplate.logoUrl} alt="Logo banque" className="logo-thumb-preview" />
                       </div>
                       <div className="thumb-meta">
-                        <span className="thumb-status">✓ Logo actif</span>
+                        <span className="thumb-status"><Check size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />Logo actif</span>
                         <div className="thumb-actions">
                           <button
                             type="button"
@@ -542,7 +542,7 @@ function optimizeLogoFile(file: File): Promise<string> {
                     <div className="uploaded-preview-badge">
                       <img src={editingTemplate.backgroundImage} alt="Spécimen chèque" className="thumb-preview" />
                       <div className="thumb-meta">
-                        <span className="thumb-status">✓ Image de fond active</span>
+                        <span className="thumb-status"><Check size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />Image de fond active</span>
                         <div className="thumb-actions">
                           <button
                             type="button"
