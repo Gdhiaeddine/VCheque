@@ -6752,10 +6752,28 @@ button {
   border: 1px solid var(--border-color);
 }
 
+.audit-badge.created {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.audit-badge.updated {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+}
+
+.audit-badge.status_changed {
+  background: #ecfeff;
+  color: #0e7490;
+  border: 1px solid #a5f3fc;
+}
+
 .audit-badge.cancelled {
-  background: var(--bg-secondary);
-  color: var(--text-muted);
-  border: 1px solid var(--border-color);
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
 }
 
 .audit-incident-block {
@@ -6815,20 +6833,58 @@ button {
   padding: 24px 0;
 }
 
+.audit-timeline-modal {
+  max-width: 700px !important;
+  width: 95vw !important;
+}
+
+.cheque-audit-modal-body {
+  max-height: 65vh;
+  overflow-y: auto;
+  padding: 16px 22px;
+}
+
+.audit-header-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.audit-meta-pill {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  background: var(--bg-secondary, #f1f5f9);
+  color: var(--text-secondary, #475569);
+  border-radius: 12px;
+  border: 1px solid var(--border-color, #e2e8f0);
+}
+
+.audit-meta-pill.count {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #bbf7d0;
+  font-weight: 600;
+}
+
 .cheque-audit-timeline {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   position: relative;
-  padding-left: 20px;
+  padding-left: 38px;
+  margin-top: 8px;
+  margin-bottom: 8px;
 }
 
 .cheque-audit-timeline::before {
   content: "";
   position: absolute;
-  left: 6px;
-  top: 4px;
-  bottom: 4px;
+  left: 14px;
+  top: 10px;
+  bottom: 10px;
   width: 2px;
   background: var(--border-color, #e2e8f0);
 }
@@ -6842,35 +6898,62 @@ button {
 
 .timeline-marker {
   position: absolute;
-  left: -20px;
-  top: 4px;
-  width: 12px;
-  height: 12px;
+  left: -38px;
+  top: 2px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: #ffffff;
   border: 2px solid #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  z-index: 2;
 }
 
-.audit-timeline-item.confirmed .timeline-marker {
+.timeline-marker.created {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.timeline-marker.updated {
+  border-color: #8b5cf6;
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
+.timeline-marker.status_changed {
+  border-color: #06b6d4;
+  background: #ecfeff;
+  color: #0891b2;
+}
+
+.timeline-marker.printed {
   border-color: #16a34a;
-  background: #dcfce7;
+  background: #f0fdf4;
+  color: #16a34a;
 }
 
-.audit-timeline-item.failed .timeline-marker {
+.timeline-marker.print_failed {
+  border-color: #ea580c;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.timeline-marker.cancelled {
   border-color: #dc2626;
-  background: #fee2e2;
-}
-
-.audit-timeline-item.requested .timeline-marker {
-  border-color: #0284c7;
-  background: #e0f2fe;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .timeline-content {
-  background: var(--bg-main, #f8fafc);
+  background: var(--bg-main, #ffffff);
   border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 6px;
-  padding: 10px 14px;
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .timeline-header {
@@ -6878,10 +6961,12 @@ button {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 6px;
+  gap: 12px;
 }
 
 .timeline-title {
-  font-size: 13px;
+  font-size: 13.5px;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
@@ -6889,10 +6974,12 @@ button {
   font-family: var(--font-mono, monospace);
   font-size: 11.5px;
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .timeline-badge-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -6900,6 +6987,52 @@ button {
 .timeline-format {
   font-size: 11.5px;
   color: var(--text-secondary);
+}
+
+.timeline-description-text {
+  margin: 8px 0 0 0;
+  font-size: 12.5px;
+  color: var(--text-secondary, #475569);
+  line-height: 1.45;
+}
+
+/* Alert box pour motif exact de rejet ou d'annulation */
+.audit-reason-alert-box {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.audit-reason-alert-box.danger {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.audit-reason-alert-box.warning {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.audit-reason-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.audit-reason-text {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 2px 0 0 0;
+  padding-left: 21px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 

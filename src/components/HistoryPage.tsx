@@ -27,9 +27,11 @@ import {
   Send,
   CheckSquare,
   ChevronDown,
-  Filter
+  Filter,
+  PlusCircle,
+  Save
 } from "lucide-react";
-import type { ChequeRecord, ChequeStatus, BankTemplate, PrintAttemptRecord, PrintAttemptStatus } from "../types";
+import type { ChequeRecord, ChequeStatus, BankTemplate, PrintAttemptRecord, PrintAttemptStatus, ChequeAuditEvent, ChequeAuditEventType } from "../types";
 import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
 import { exportChequeToPdf } from "../services/pdfExport";
 import { defaultBankTemplates } from "../banksData";
@@ -43,6 +45,7 @@ import {
   getPrintAttempts,
   deletePrintAttempt,
   clearPrintLogs,
+  getChequeFullAuditTimeline,
   type HistoryStats
 } from "../services/db";
 import { exportChequesToCsv, exportChequesToExcel, STATUS_LABELS } from "../services/exportReports";
@@ -115,7 +118,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   const [activeView, setActiveView] = useState<"cheques" | "audit">("cheques");
   const [printLogs, setPrintLogs] = useState<PrintAttemptRecord[]>([]);
   const [selectedChequeForAudit, setSelectedChequeForAudit] = useState<ChequeRecord | null>(null);
-  const [chequeSpecificLogs, setChequeSpecificLogs] = useState<PrintAttemptRecord[]>([]);
+  const [chequeSpecificLogs, setChequeSpecificLogs] = useState<ChequeAuditEvent[]>([]);
   const [auditStatusFilter, setAuditStatusFilter] = useState<"all" | PrintAttemptStatus>("all");
   const [auditSearchQuery, setAuditSearchQuery] = useState<string>("");
 
@@ -283,7 +286,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   const handleOpenChequeAudit = async (cheque: ChequeRecord) => {
     setSelectedChequeForAudit(cheque);
     try {
-      const logs = await getPrintAttempts(cheque.id);
+      const logs = await getChequeFullAuditTimeline(cheque);
       setChequeSpecificLogs(logs);
     } catch {
       setChequeSpecificLogs([]);
@@ -295,7 +298,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
       await deletePrintAttempt(id);
       await fetchPrintLogs();
       if (selectedChequeForAudit) {
-        const logs = await getPrintAttempts(selectedChequeForAudit.id);
+        const logs = await getChequeFullAuditTimeline(selectedChequeForAudit);
         setChequeSpecificLogs(logs);
       }
     }
@@ -305,7 +308,55 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     if (window.confirm("Supprimer l'ensemble du journal d'audit des tentatives d'impression ?")) {
       await clearPrintLogs();
       await fetchPrintLogs();
-      setChequeSpecificLogs([]);
+      if (selectedChequeForAudit) {
+        const logs = await getChequeFullAuditTimeline(selectedChequeForAudit);
+        setChequeSpecificLogs(logs);
+      } else {
+        setChequeSpecificLogs([]);
+      }
+    }
+  };
+
+  const renderAuditEventIcon = (type: ChequeAuditEventType) => {
+    switch (type) {
+      case "created":
+        return <PlusCircle size={15} className="timeline-ev-icon created" />;
+      case "updated":
+        return <Save size={15} className="timeline-ev-icon updated" />;
+      case "status_changed":
+        return <Clock size={15} className="timeline-ev-icon status_changed" />;
+      case "printed":
+        return <Printer size={15} className="timeline-ev-icon printed" />;
+      case "print_failed":
+        return <AlertTriangle size={15} className="timeline-ev-icon print_failed" />;
+      case "cancelled":
+        return <Ban size={15} className="timeline-ev-icon cancelled" />;
+      default:
+        return <FileText size={15} className="timeline-ev-icon default" />;
+    }
+  };
+
+  const getAuditEventBadge = (event: ChequeAuditEvent) => {
+    switch (event.eventType) {
+      case "created":
+        return <span className="audit-badge created">Création initiale</span>;
+      case "updated":
+        return <span className="audit-badge updated">Modification</span>;
+      case "status_changed":
+        return (
+          <span className="audit-badge status_changed">
+            {event.fromStatus && `${STATUS_LABELS[event.fromStatus] || event.fromStatus} ➔ `}
+            {STATUS_LABELS[event.toStatus || "saved"] || event.toStatus}
+          </span>
+        );
+      case "printed":
+        return <span className="audit-badge confirmed">Sortie physique confirmée</span>;
+      case "print_failed":
+        return <span className="audit-badge failed">Incident / Échec d'impression</span>;
+      case "cancelled":
+        return <span className="audit-badge cancelled">Chèque annulé</span>;
+      default:
+        return <span className="audit-badge info">Événement</span>;
     }
   };
 
@@ -1333,10 +1384,10 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         </div>
       )}
 
-      {/* Modal d'audit spécifique pour un chèque donné */}
+      {/* Modal d'audit spécifique pour un chèque donné (Historique complet du cycle de vie) */}
       {selectedChequeForAudit && (
         <div className="print-confirm-overlay" role="dialog" aria-modal="true" onClick={() => setSelectedChequeForAudit(null)}>
-          <div className="print-confirm-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="print-confirm-modal audit-timeline-modal" onClick={(e) => e.stopPropagation()}>
             <div className="print-confirm-header">
               <div className="print-confirm-icon-box">
                 <ShieldCheck size={22} className="confirm-icon text-gold" />
@@ -1344,13 +1395,26 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
               <div style={{ flex: 1 }}>
                 <h3 className="confirm-title">Journal d'audit du chèque</h3>
                 <p className="confirm-subtitle">
-                  {selectedChequeForAudit.beneficiary} — {selectedChequeForAudit.amount} DZD ({selectedChequeForAudit.bankName})
+                  {selectedChequeForAudit.beneficiary} — {formatNumericAmount(selectedChequeForAudit.amount)} DZD ({selectedChequeForAudit.bankName})
                 </p>
+                <div className="audit-header-metadata">
+                  <span className={`status-badge ${selectedChequeForAudit.status || "saved"}`}>
+                    {STATUS_LABELS[selectedChequeForAudit.status || "saved"] || selectedChequeForAudit.status}
+                  </span>
+                  {selectedChequeForAudit.chequeNumber && (
+                    <span className="audit-meta-pill">N° {selectedChequeForAudit.chequeNumber}</span>
+                  )}
+                  {selectedChequeForAudit.reference && (
+                    <span className="audit-meta-pill">Réf: {selectedChequeForAudit.reference}</span>
+                  )}
+                  <span className="audit-meta-pill count">{chequeSpecificLogs.length} trace(s) d'audit</span>
+                </div>
               </div>
               <button
                 type="button"
                 className="btn-modal-close"
                 onClick={() => setSelectedChequeForAudit(null)}
+                title="Fermer"
               >
                 <X size={18} />
               </button>
@@ -1359,32 +1423,51 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             <div className="cheque-audit-modal-body">
               {chequeSpecificLogs.length === 0 ? (
                 <p className="audit-empty-modal-text">
-                  Aucune trace d'impression consignée pour ce chèque.
+                  Aucun événement consigné dans le journal d'audit pour ce chèque.
                 </p>
               ) : (
                 <div className="cheque-audit-timeline">
                   {chequeSpecificLogs.map((log) => (
-                    <div key={log.id} className={`audit-timeline-item ${log.status}`}>
-                      <div className="timeline-marker" />
+                    <div key={log.id} className={`audit-timeline-item ${log.eventType}`}>
+                      <div className={`timeline-marker ${log.eventType}`}>
+                        {renderAuditEventIcon(log.eventType)}
+                      </div>
                       <div className="timeline-content">
                         <div className="timeline-header">
-                          <strong className="timeline-title">
-                            {log.copyNumber > 1 ? `Réimpression (Tirage N°${log.copyNumber})` : "Premier tirage"}
-                          </strong>
-                          <span className="timeline-time">{formatTimestamp(log.attemptedAt)}</span>
+                          <strong className="timeline-title">{log.title}</strong>
+                          <span className="timeline-time">{formatTimestamp(log.timestamp)}</span>
                         </div>
+
                         <div className="timeline-badge-row">
-                          <span className={`audit-badge ${log.status}`}>
-                            {log.status === "confirmed"
-                              ? "Sortie physique confirmée"
-                              : log.status === "failed"
-                              ? `Incident : ${log.failureReason || "Erreur"}`
-                              : "Demandé (En attente)"}
-                          </span>
-                          <span className="timeline-format">
-                            {log.paperFormat || "A4"} · {log.placement || "Centre"}
-                          </span>
+                          {getAuditEventBadge(log)}
+                          {log.metadata?.paperFormat && (
+                            <span className="timeline-format">
+                              {log.metadata.paperFormat} · {log.metadata.placement || "Centre"}
+                            </span>
+                          )}
+                          {log.metadata?.place && (
+                            <span className="timeline-format">Lieu : {log.metadata.place}</span>
+                          )}
                         </div>
+
+                        {log.description && (
+                          <p className="timeline-description-text">{log.description}</p>
+                        )}
+
+                        {/* Motif exact en cas d'incident d'impression ou d'annulation formelle */}
+                        {log.reason && (
+                          <div className={`audit-reason-alert-box ${log.eventType === "cancelled" ? "danger" : "warning"}`}>
+                            <div className="audit-reason-header">
+                              {log.eventType === "cancelled" ? <Ban size={15} /> : <AlertTriangle size={15} />}
+                              <strong>
+                                {log.eventType === "cancelled"
+                                  ? "Motif exact de l'annulation :"
+                                  : "Motif exact du rejet / de l'échec :"}
+                              </strong>
+                            </div>
+                            <p className="audit-reason-text">{log.reason}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

@@ -51,6 +51,36 @@ export type ChequeStatus =
 
 export type PrintAttemptStatus = "requested" | "confirmed" | "failed" | "cancelled";
 
+export type ChequeAuditEventType =
+  | "created"         // Création initiale
+  | "updated"         // Modification des données
+  | "status_changed"  // Évolution du statut (ex: prêt -> remis)
+  | "print_requested" // Lancement d'une impression
+  | "printed"         // Confirmation d'impression physique
+  | "print_failed"    // Échec ou incident d'impression
+  | "cancelled";      // Annulation formelle avec motif
+
+export interface ChequeAuditEvent {
+  id: string;
+  chequeId: string;
+  eventType: ChequeAuditEventType;
+  title: string;              // Ex: "Création du chèque", "Tirage d'impression N°2", "Changement de statut"
+  description?: string;        // Détails lisibles
+  reason?: string;             // Motif exact (annulation ou échec d'impression)
+  fromStatus?: ChequeStatus;
+  toStatus?: ChequeStatus;
+  metadata?: {
+    amount?: string;
+    beneficiary?: string;
+    bankName?: string;
+    copyNumber?: number;
+    paperFormat?: string;
+    placement?: string;
+    place?: string;
+  };
+  timestamp: string;           // ISO 8601
+}
+
 export interface PrintAttemptRecord {
   id: string;
   chequeId: string;

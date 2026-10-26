@@ -1,9 +1,10 @@
 import Database from "@tauri-apps/plugin-sql";
-import type { ChequeRecord, ChequeStatus, BeneficiaryRecord, PrintAttemptRecord, PrintAttemptStatus } from "../types";
+import type { ChequeRecord, ChequeStatus, BeneficiaryRecord, PrintAttemptRecord, PrintAttemptStatus, ChequeAuditEvent, ChequeAuditEventType } from "../types";
 
 export const HISTORIQUE_STORAGE_KEY = "cheque-studio-history-v1";
 export const BENEFICIARIES_STORAGE_KEY = "cheque-studio-beneficiaries-v1";
 export const PRINT_LOGS_STORAGE_KEY = "cheque-studio-print-logs-v1";
+export const EVENTS_STORAGE_KEY = "cheque-studio-cheque-events-v1";
 const DB_PATH = "sqlite:cheques.db";
 
 let dbInstance: Database | null = null;
@@ -186,7 +187,25 @@ export async function getDatabase(): Promise<Database | null> {
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_print_logs_cheque ON print_logs(cheque_id);`);
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_print_logs_date ON print_logs(attempted_at DESC);`);
 
-    // 5. Migration transparente depuis localStorage si les tables SQLite sont vides
+    // 5. Table des événements d'audit complets du chèque
+    await dbInstance.execute(`
+      CREATE TABLE IF NOT EXISTS cheque_events (
+        id TEXT PRIMARY KEY,
+        cheque_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        reason TEXT,
+        from_status TEXT,
+        to_status TEXT,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL
+      );
+    `);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheque_events_id ON cheque_events(cheque_id);`);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheque_events_date ON cheque_events(created_at DESC);`);
+
+    // 6. Migration transparente depuis localStorage si les tables SQLite sont vides
     await migrateFromLocalStorageIfEmpty(dbInstance);
     await migrateBeneficiariesIfEmpty(dbInstance);
 
@@ -538,48 +557,85 @@ export async function getAllFilteredCheques(params: Omit<GetChequesParams, "page
  * Enregistre ou met à jour un chèque dans SQLite et met à jour le miroir localStorage
  */
 export async function saveChequeRecord(record: ChequeRecord): Promise<void> {
+  const isNew = !getLocalRecords().some((r) => r.id === record.id);
+
   // Toujours maintenir une copie de secours dans localStorage
   updateLocalMirror(record);
 
   const db = await getDatabase();
-  if (!db) return;
+  if (db) {
+    const rawVal = parseFloat((record.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+    const count = typeof record.printCount === "number" ? record.printCount : (record.status === "printed" ? 1 : 0);
 
-  const rawVal = parseFloat((record.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
-  const count = typeof record.printCount === "number" ? record.printCount : (record.status === "printed" ? 1 : 0);
+    await db.execute(
+      `INSERT OR REPLACE INTO cheques (
+        id, amount, amount_numeric, beneficiary, place, date, cheque_number,
+        reference, cancellation_reason, cancelled_at, delivered_at, cashed_at,
+        bank_template_id, bank_name, status, is_crossed, crossed_with_text,
+        show_cheque_number, print_count, created_at, updated_at, printed_at, last_printed_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23);`,
+      [
+        record.id,
+        record.amount,
+        rawVal,
+        record.beneficiary,
+        record.place,
+        record.date,
+        record.chequeNumber || null,
+        record.reference || null,
+        record.cancellationReason || null,
+        record.cancelledAt || null,
+        record.deliveredAt || null,
+        record.cashedAt || null,
+        record.bankTemplateId,
+        record.bankName,
+        record.status,
+        record.isCrossed !== false ? 1 : 0,
+        record.crossedWithText !== false ? 1 : 0,
+        record.showChequeNumber ? 1 : 0,
+        count,
+        record.createdAt,
+        record.updatedAt || null,
+        record.printedAt || null,
+        record.lastPrintedAt || record.printedAt || null
+      ]
+    );
+  }
 
-  await db.execute(
-    `INSERT OR REPLACE INTO cheques (
-      id, amount, amount_numeric, beneficiary, place, date, cheque_number,
-      reference, cancellation_reason, cancelled_at, delivered_at, cashed_at,
-      bank_template_id, bank_name, status, is_crossed, crossed_with_text,
-      show_cheque_number, print_count, created_at, updated_at, printed_at, last_printed_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23);`,
-    [
-      record.id,
-      record.amount,
-      rawVal,
-      record.beneficiary,
-      record.place,
-      record.date,
-      record.chequeNumber || null,
-      record.reference || null,
-      record.cancellationReason || null,
-      record.cancelledAt || null,
-      record.deliveredAt || null,
-      record.cashedAt || null,
-      record.bankTemplateId,
-      record.bankName,
-      record.status,
-      record.isCrossed !== false ? 1 : 0,
-      record.crossedWithText !== false ? 1 : 0,
-      record.showChequeNumber ? 1 : 0,
-      count,
-      record.createdAt,
-      record.updatedAt || null,
-      record.printedAt || null,
-      record.lastPrintedAt || record.printedAt || null
-    ]
-  );
+  // Journalisation d'audit
+  try {
+    if (isNew) {
+      await logChequeEvent({
+        chequeId: record.id,
+        eventType: "created",
+        title: "Création initiale du chèque",
+        description: `Chèque créé au profit de "${record.beneficiary || "Bénéficiaire non spécifié"}" pour un montant de ${record.amount} DA (${record.bankName}).`,
+        toStatus: record.status,
+        metadata: {
+          amount: record.amount,
+          beneficiary: record.beneficiary,
+          bankName: record.bankName,
+          place: record.place
+        },
+        timestamp: record.createdAt || new Date().toISOString()
+      });
+    } else {
+      await logChequeEvent({
+        chequeId: record.id,
+        eventType: "updated",
+        title: "Modification des données du chèque",
+        description: `Montant : ${record.amount} DA · Fait à ${record.place || "—"} le ${record.date}.`,
+        toStatus: record.status,
+        metadata: {
+          amount: record.amount,
+          beneficiary: record.beneficiary,
+          bankName: record.bankName,
+          place: record.place
+        },
+        timestamp: record.updatedAt || new Date().toISOString()
+      });
+    }
+  } catch {}
 }
 
 /**
@@ -591,6 +647,7 @@ export async function cancelChequeRecord(id: string, reason: string): Promise<vo
   // 1. Miroir localStorage
   const list = getLocalRecords();
   const target = list.find((c) => c.id === id);
+  const prevStatus = target ? target.status : undefined;
   if (target) {
     target.status = "annule";
     target.cancellationReason = reason;
@@ -610,7 +667,7 @@ export async function cancelChequeRecord(id: string, reason: string): Promise<vo
     );
   }
 
-  // 3. Logger dans les logs d'audit
+  // 3. Logger dans les logs d'audit et la chronologie complète
   try {
     if (target) {
       await logPrintAttempt({
@@ -627,6 +684,22 @@ export async function cancelChequeRecord(id: string, reason: string): Promise<vo
         failureReason: `Chèque annulé : ${reason}`,
         copyNumber: target.printCount || 1
       });
+
+      await logChequeEvent({
+        chequeId: id,
+        eventType: "cancelled",
+        title: "Annulation officielle du chèque",
+        description: "Le chèque a été marqué comme annulé et exclu des totaux financiers actifs.",
+        reason: reason,
+        fromStatus: prevStatus,
+        toStatus: "annule",
+        metadata: {
+          amount: target.amount,
+          beneficiary: target.beneficiary,
+          bankName: target.bankName
+        },
+        timestamp: now
+      });
     }
   } catch {}
 }
@@ -638,6 +711,8 @@ export async function updateChequeStatus(id: string, status: ChequeStatus): Prom
   const now = new Date().toISOString();
   const list = getLocalRecords();
   const target = list.find((c) => c.id === id);
+  const oldStatus = target ? target.status : undefined;
+
   if (target) {
     target.status = status;
     target.updatedAt = now;
@@ -656,6 +731,26 @@ export async function updateChequeStatus(id: string, status: ChequeStatus): Prom
       await db.execute(`UPDATE cheques SET status = $1, updated_at = $2 WHERE id = $3;`, [status, now, id]);
     }
   }
+
+  // Journaliser le changement de statut dans la chronologie
+  try {
+    if (target) {
+      await logChequeEvent({
+        chequeId: id,
+        eventType: "status_changed",
+        title: `Statut modifié : ${oldStatus || "—"} ➔ ${status}`,
+        description: `Le statut a été mis à jour vers '${status}'.`,
+        fromStatus: oldStatus,
+        toStatus: status,
+        metadata: {
+          amount: target.amount,
+          beneficiary: target.beneficiary,
+          bankName: target.bankName
+        },
+        timestamp: now
+      });
+    }
+  } catch {}
 }
 
 /**
@@ -1434,4 +1529,232 @@ export async function clearPrintLogs(): Promise<void> {
       console.warn("Erreur clear SQLite print_logs:", e);
     }
   }
+}
+
+/* ==========================================================================
+   ÉVÉNEMENTS D'AUDIT COMPLETS DU CYCLE DE VIE DU CHÈQUE
+   ========================================================================== */
+
+function getLocalEvents(): ChequeAuditEvent[] {
+  try {
+    const raw = localStorage.getItem(EVENTS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalEvents(events: ChequeAuditEvent[]): void {
+  try {
+    localStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(events));
+  } catch {}
+}
+
+/**
+ * Enregistre un événement dans la chronologie d'audit du chèque
+ */
+export async function logChequeEvent(event: Omit<ChequeAuditEvent, "id">): Promise<void> {
+  const id = "ev-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
+  const fullEvent: ChequeAuditEvent = { ...event, id };
+
+  // 1. Sauvegarde dans localStorage
+  const localList = getLocalEvents();
+  localList.unshift(fullEvent);
+  saveLocalEvents(localList);
+
+  // 2. Sauvegarde dans SQLite
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(
+        `INSERT OR REPLACE INTO cheque_events (
+          id, cheque_id, event_type, title, description, reason, from_status, to_status, metadata_json, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+        [
+          fullEvent.id,
+          fullEvent.chequeId,
+          fullEvent.eventType,
+          fullEvent.title,
+          fullEvent.description || null,
+          fullEvent.reason || null,
+          fullEvent.fromStatus || null,
+          fullEvent.toStatus || null,
+          fullEvent.metadata ? JSON.stringify(fullEvent.metadata) : null,
+          fullEvent.timestamp
+        ]
+      );
+    } catch (err) {
+      console.warn("Erreur insertion cheque_events SQLite:", err);
+    }
+  }
+}
+
+/**
+ * Reconstitue la chronologie d'audit complète d'un chèque depuis sa création
+ */
+export async function getChequeFullAuditTimeline(cheque: ChequeRecord): Promise<ChequeAuditEvent[]> {
+  const events: ChequeAuditEvent[] = [];
+  const db = await getDatabase();
+
+  if (db) {
+    try {
+      const rows = await db.select<{
+        id: string;
+        cheque_id: string;
+        event_type: ChequeAuditEventType;
+        title: string;
+        description: string | null;
+        reason: string | null;
+        from_status: ChequeStatus | null;
+        to_status: ChequeStatus | null;
+        metadata_json: string | null;
+        created_at: string;
+      }[]>(
+        "SELECT * FROM cheque_events WHERE cheque_id = ? ORDER BY created_at ASC;",
+        [cheque.id]
+      );
+
+      for (const r of rows) {
+        events.push({
+          id: r.id,
+          chequeId: r.cheque_id,
+          eventType: r.event_type,
+          title: r.title,
+          description: r.description || undefined,
+          reason: r.reason || undefined,
+          fromStatus: r.from_status || undefined,
+          toStatus: r.to_status || undefined,
+          metadata: r.metadata_json ? JSON.parse(r.metadata_json) : undefined,
+          timestamp: r.created_at
+        });
+      }
+    } catch (e) {
+      console.warn("Erreur lecture cheque_events SQLite:", e);
+    }
+  }
+
+  // Fallback si SQLite vide ou mode web
+  if (events.length === 0) {
+    const local = getLocalEvents().filter((e) => e.chequeId === cheque.id);
+    if (local.length > 0) {
+      events.push(...local);
+    }
+  }
+
+  // Rétrocompatibilité : si aucun événement n'a été enregistré pour ce chèque (ex: chèque créé antérieurement),
+  // reconstituer intelligemment la timeline à partir des données historiques existantes
+  if (events.length === 0) {
+    // 1. Événement Création
+    events.push({
+      id: `synth-create-${cheque.id}`,
+      chequeId: cheque.id,
+      eventType: "created",
+      title: "Création initiale du chèque",
+      description: `Chèque émis au profit de "${cheque.beneficiary}" pour un montant de ${cheque.amount} DA sur ${cheque.bankName}.`,
+      toStatus: "saved",
+      metadata: {
+        amount: cheque.amount,
+        beneficiary: cheque.beneficiary,
+        bankName: cheque.bankName,
+        place: cheque.place
+      },
+      timestamp: cheque.createdAt
+    });
+
+    // 2. Événement Modification si updatedAt > createdAt
+    if (cheque.updatedAt && cheque.updatedAt !== cheque.createdAt) {
+      events.push({
+        id: `synth-update-${cheque.id}`,
+        chequeId: cheque.id,
+        eventType: "updated",
+        title: "Dernière modification enregistrée",
+        description: `Coordonnées ou données mises à jour le ${new Date(cheque.updatedAt).toLocaleDateString("fr-FR")}.`,
+        timestamp: cheque.updatedAt
+      });
+    }
+
+    // 3. Événement Remis
+    if (cheque.deliveredAt) {
+      events.push({
+        id: `synth-delivered-${cheque.id}`,
+        chequeId: cheque.id,
+        eventType: "status_changed",
+        title: "Chèque remis au bénéficiaire",
+        description: "Le chèque a été marqué comme remis / transmis.",
+        toStatus: "remis",
+        timestamp: cheque.deliveredAt
+      });
+    }
+
+    // 4. Événement Encaissé
+    if (cheque.cashedAt) {
+      events.push({
+        id: `synth-cashed-${cheque.id}`,
+        chequeId: cheque.id,
+        eventType: "status_changed",
+        title: "Chèque encaissé / débité",
+        description: "Débit confirmé sur le compte bancaire.",
+        toStatus: "encaisse",
+        timestamp: cheque.cashedAt
+      });
+    }
+
+    // 5. Événement Annulation
+    if (cheque.status === "annule" || cheque.cancelledAt) {
+      events.push({
+        id: `synth-cancelled-${cheque.id}`,
+        chequeId: cheque.id,
+        eventType: "cancelled",
+        title: "Annulation du chèque",
+        description: "Chèque formellement annulé dans l'historique.",
+        reason: cheque.cancellationReason || "Motif d'annulation non précisé",
+        toStatus: "annule",
+        timestamp: cheque.cancelledAt || cheque.updatedAt || cheque.createdAt
+      });
+    }
+  }
+
+  // Toujours fusionner avec les tentatives d'impression physiques issues de print_logs (pour avoir les rejets, échecs et copies)
+  try {
+    const printLogs = await getPrintAttempts(cheque.id);
+    for (const pl of printLogs) {
+      const alreadyHasIt = events.some((ev) => ev.id === pl.id || (ev.timestamp === pl.attemptedAt && ev.eventType.includes("print")));
+      if (!alreadyHasIt) {
+        if (pl.status === "confirmed") {
+          events.push({
+            id: pl.id,
+            chequeId: cheque.id,
+            eventType: "printed",
+            title: pl.copyNumber > 1 ? `Réimpression (Tirage N°${pl.copyNumber})` : "Premier tirage imprimé",
+            description: `Impression papier confirmée sur ${pl.bankName} (${pl.paperFormat || "A4"} · ${pl.placement || "Centre"}).`,
+            metadata: {
+              copyNumber: pl.copyNumber,
+              paperFormat: pl.paperFormat,
+              placement: pl.placement,
+              bankName: pl.bankName
+            },
+            timestamp: pl.confirmedAt || pl.attemptedAt
+          });
+        } else if (pl.status === "failed") {
+          events.push({
+            id: pl.id,
+            chequeId: cheque.id,
+            eventType: "print_failed",
+            title: `Échec / Rejet d'impression (Tirage N°${pl.copyNumber})`,
+            description: "Une anomalie matérielle ou un rejet a été signalé.",
+            reason: pl.failureReason || "Incident d'impression non spécifié",
+            metadata: {
+              copyNumber: pl.copyNumber,
+              paperFormat: pl.paperFormat,
+              placement: pl.placement
+            },
+            timestamp: pl.attemptedAt
+          });
+        }
+      }
+    }
+  } catch {}
+
+  // Trier par ordre chronologique (du plus ancien au plus récent)
+  return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 }
