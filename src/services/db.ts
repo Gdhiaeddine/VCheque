@@ -2793,3 +2793,89 @@ export async function deleteChequeAttachment(id: string): Promise<void> {
     }
   }
 }
+
+/* ==========================================================================
+   MODULE TRAITEMENT EN LOT : ENREGISTREMENT DE PLUSIEURS CHÈQUES
+   ========================================================================== */
+
+export async function saveBatchCheques(
+  records: ChequeRecord[],
+  autoRecordBen = true
+): Promise<{ success: boolean; count: number }> {
+  if (records.length === 0) return { success: true, count: 0 };
+
+  const db = await getDatabase();
+  const compId = getActiveCompanyId();
+
+  // 1. Mise à jour miroir LocalStorage
+  try {
+    const existing = getLocalRecords();
+    const map = new Map<string, ChequeRecord>(existing.map((c) => [c.id, c]));
+    for (const r of records) {
+      const recWithComp = { ...r, companyId: r.companyId || compId };
+      map.set(r.id, recWithComp);
+      if (autoRecordBen && r.beneficiary && r.beneficiary !== "Bénéficiaire non spécifié") {
+        autoRecordLocalBeneficiary(r.beneficiary, r.companyId || compId);
+      }
+    }
+    localStorage.setItem(HISTORIQUE_STORAGE_KEY, JSON.stringify(Array.from(map.values())));
+  } catch (err) {
+    console.warn("Erreur mise à jour locale batch cheques:", err);
+  }
+
+  // 2. Base SQLite si disponible
+  if (db) {
+    try {
+      for (const record of records) {
+        const rawVal = parseFloat((record.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+        const count = typeof record.printCount === "number" ? record.printCount : (record.status === "printed" ? 1 : 0);
+        const recordCompId = record.companyId || compId;
+
+        await db.execute(
+          `INSERT OR REPLACE INTO cheques (
+            id, company_id, account_id, cheque_book_id, amount, amount_numeric, beneficiary, place, date, cheque_number,
+            reference, cancellation_reason, cancelled_at, delivered_at, cashed_at,
+            bank_template_id, bank_name, status, is_crossed, crossed_with_text,
+            show_cheque_number, print_count, created_at, updated_at, printed_at, last_printed_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26);`,
+          [
+            record.id,
+            recordCompId,
+            record.accountId || null,
+            record.chequeBookId || null,
+            record.amount,
+            rawVal,
+            record.beneficiary,
+            record.place,
+            record.date,
+            record.chequeNumber || null,
+            record.reference || null,
+            record.cancellationReason || null,
+            record.cancelledAt || null,
+            record.deliveredAt || null,
+            record.cashedAt || null,
+            record.bankTemplateId,
+            record.bankName,
+            record.status,
+            record.isCrossed !== false ? 1 : 0,
+            record.crossedWithText !== false ? 1 : 0,
+            record.showChequeNumber ? 1 : 0,
+            count,
+            record.createdAt,
+            record.updatedAt || null,
+            record.printedAt || null,
+            record.lastPrintedAt || null
+          ]
+        );
+
+        if (autoRecordBen && record.beneficiary && record.beneficiary !== "Bénéficiaire non spécifié") {
+          await autoRecordBeneficiary(record.beneficiary, recordCompId);
+        }
+      }
+    } catch (err) {
+      console.error("Erreur insertion SQLite batch cheques:", err);
+    }
+  }
+
+  return { success: true, count: records.length };
+}

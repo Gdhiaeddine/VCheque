@@ -35,7 +35,7 @@ interface BankAccountsModalProps {
   templates: BankTemplate[];
   currentAccountId?: string | null;
   currentChequeBookId?: string | null;
-  onAccountSelected?: (account: BankAccountRecord, nextChequeNum?: string, selectedBook?: ChequeBookRecord) => void;
+  onAccountSelected?: (account: BankAccountRecord | null, nextChequeNum?: string, selectedBook?: ChequeBookRecord | null) => void;
 }
 
 export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
@@ -241,6 +241,13 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
     onClose();
   };
 
+  const handleDissociateAccountFromCheque = () => {
+    if (onAccountSelected) {
+      onAccountSelected(null, "", null);
+    }
+    onClose();
+  };
+
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
   return (
@@ -310,7 +317,18 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                         <div className="account-tags-wrap">
                           {acc.id === currentAccountId && (
                             <span className="account-current-cheque-pill" title="Compte actuellement utilisé pour le chèque en cours">
-                              Actif sur chèque
+                              <span>Actif sur chèque</span>
+                              <button
+                                type="button"
+                                className="btn-pill-dissociate-x"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDissociateAccountFromCheque();
+                                }}
+                                title="Dissocier ce compte du chèque (X)"
+                              >
+                                <X size={10} />
+                              </button>
                             </span>
                           )}
                           {acc.isDefault && <span className="account-default-tag">Par défaut</span>}
@@ -516,28 +534,46 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                     </p>
                   </div>
                   {onAccountSelected && (
-                    <button
-                      type="button"
-                      className={`btn-select-account-main ${selectedAccount.id === currentAccountId ? "active" : ""}`}
-                      onClick={() => handleSelectAccountForCheque(selectedAccount)}
-                      title={
-                        selectedAccount.id === currentAccountId
-                          ? "Ce compte est actuellement sélectionné pour le chèque en cours"
-                          : "Utiliser ce compte bancaire pour le chèque en cours"
-                      }
-                    >
-                      {selectedAccount.id === currentAccountId ? (
-                        <>
-                          <CheckCircle2 size={15} />
-                          <span>Compte sélectionné pour ce chèque</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles size={14} />
-                          <span>Utiliser pour ce chèque</span>
-                        </>
+                    <div className="account-use-btn-group">
+                      <button
+                        type="button"
+                        className={`btn-select-account-main ${selectedAccount.id === currentAccountId ? "active" : ""}`}
+                        onClick={() => handleSelectAccountForCheque(selectedAccount)}
+                        title={
+                          selectedAccount.id === currentAccountId
+                            ? "Ce compte est actuellement sélectionné pour le chèque en cours"
+                            : "Utiliser ce compte bancaire pour le chèque en cours"
+                        }
+                      >
+                        {selectedAccount.id === currentAccountId ? (
+                          <>
+                            <CheckCircle2 size={15} />
+                            <span>Compte sélectionné pour ce chèque</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles size={14} />
+                            <span>Utiliser pour ce chèque</span>
+                          </>
+                        )}
+                      </button>
+
+                      {selectedAccount.id === currentAccountId && (
+                        <button
+                          type="button"
+                          className="btn-dissociate-account-modal"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDissociateAccountFromCheque();
+                          }}
+                          title="Dissocier ce compte du chèque en cours (X)"
+                          aria-label="Dissocier ce compte"
+                        >
+                          <X size={15} />
+                          <span>Dissocier</span>
+                        </button>
                       )}
-                    </button>
+                    </div>
                   )}
                 </div>
 
@@ -727,10 +763,25 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
 
                             <div className="book-action-row">
                               {currentChequeBookId === book.id && selectedAccount.id === currentAccountId ? (
-                                <span className="book-selected-badge" title="Ce chéquier est actuellement utilisé pour le chèque en cours">
-                                  <CheckCircle2 size={12} />
-                                  <span>Chéquier actif sur ce chèque</span>
-                                </span>
+                                <div className="book-selected-group">
+                                  <span className="book-selected-badge" title="Ce chéquier est actuellement utilisé pour le chèque en cours">
+                                    <CheckCircle2 size={12} />
+                                    <span>Chéquier actif sur ce chèque</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="btn-dissociate-book-mini"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDissociateAccountFromCheque();
+                                    }}
+                                    title="Dissocier ce chéquier du chèque en cours (X)"
+                                    aria-label="Dissocier ce chéquier"
+                                  >
+                                    <X size={13} />
+                                    <span>Dissocier (X)</span>
+                                  </button>
+                                </div>
                               ) : book.isActive ? (
                                 <button
                                   type="button"

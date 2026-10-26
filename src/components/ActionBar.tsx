@@ -1,5 +1,5 @@
 import React from "react";
-import { Edit3, Save, Printer, PlusCircle, CheckCircle2, Clock, FileDown, CreditCard } from "lucide-react";
+import { Edit3, Save, Printer, PlusCircle, CheckCircle2, Clock, FileDown, CreditCard, FileSpreadsheet } from "lucide-react";
 import type { ChequeStatus } from "../types";
 
 interface ActionBarProps {
@@ -9,6 +9,7 @@ interface ActionBarProps {
   onExportPdf?: () => void;
   onNew?: () => void;
   onOpenBankAccounts?: () => void;
+  onOpenBatchImport?: () => void;
   showNewButton?: boolean;
   activeStatus?: ChequeStatus | null;
   printCount?: number;
@@ -21,6 +22,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onExportPdf,
   onNew,
   onOpenBankAccounts,
+  onOpenBatchImport,
   showNewButton = true,
   activeStatus,
   printCount = 0
@@ -68,6 +70,18 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           >
             <CreditCard size={16} className="btn-action-icon" />
             <span>Comptes & Chéquiers</span>
+          </button>
+        )}
+
+        {onOpenBatchImport && (
+          <button
+            type="button"
+            className="btn-action-card btn-batch-import"
+            onClick={onOpenBatchImport}
+            title="Importer des paiements depuis Excel/CSV et traiter des chèques en lot"
+          >
+            <FileSpreadsheet size={16} className="btn-action-icon text-emerald" />
+            <span>Traitement en lot</span>
           </button>
         )}
 

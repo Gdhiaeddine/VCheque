@@ -247,3 +247,62 @@ export interface AppSettings {
   defaultShowChequeNumber: boolean;
   defaultTemplateId?: string;
 }
+
+/* ==========================================================================
+   MODULE 1.6 : IMPORTATION ET TRAITEMENT EN LOT (BATCH PAYMENTS)
+   ========================================================================== */
+
+export type BatchRowStatus = "valid" | "duplicate" | "error";
+
+export interface BatchColumnMapping {
+  beneficiary: string;
+  amount: string;
+  date?: string;
+  place?: string;
+  chequeNumber?: string;
+  reference?: string;
+  bankTemplateId?: string;
+}
+
+export interface BatchItem {
+  id: string;
+  rowIndex: number;
+  beneficiary: string;
+  rawAmount: string;
+  numericAmount: number;
+  formattedAmount: string;
+  amountInWords: string;
+  date: string;
+  place: string;
+  chequeNumber?: string;
+  reference?: string;
+  bankTemplateId?: string;
+  status: BatchRowStatus;
+  statusMessage?: string;
+  isDuplicate?: boolean;
+  duplicateChequeId?: string;
+  selected: boolean;
+}
+
+export interface BatchExecutionReport {
+  batchId: string;
+  companyId: string;
+  companyName: string;
+  accountId?: string;
+  accountLabel?: string;
+  totalRowsRead: number;
+  totalImported: number;
+  totalPrinted: number;
+  totalErrors: number;
+  totalDuplicatesDetected: number;
+  totalAmountNumeric: number;
+  totalAmountFormatted: string;
+  executedAt: string;
+  items: Array<{
+    beneficiary: string;
+    amount: string;
+    chequeNumber?: string;
+    status: "saved" | "printed" | "skipped";
+    reason?: string;
+  }>;
+}

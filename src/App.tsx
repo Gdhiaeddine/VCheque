@@ -12,13 +12,29 @@ import { CalibrationPanel } from "./components/CalibrationPanel";
 import { ActionBar } from "./components/ActionBar";
 import { amountInFrenchWords, splitWordsByLimit, formatNumericAmount } from "./moneyToWords";
 import { defaultBankTemplates, defaultPositions } from "./banksData";
-import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, ChequeStatus, AppSettings, PrintAttemptRecord, CompanyRecord, BankAccountRecord, ChequeBookRecord } from "./types";
+import type {
+  BankTemplate,
+  FieldKey,
+  PrintSettings,
+  ChequeRecord,
+  ChequeStatus,
+  AppSettings,
+  PrintAttemptRecord,
+  CompanyRecord,
+  BankAccountRecord,
+  ChequeBookRecord,
+  BatchItem,
+  BatchExecutionReport
+} from "./types";
 import { PrintModal, getPaperDimensions, calculateChequePosition } from "./components/PrintModal";
 import { PrintConfirmationModal } from "./components/PrintConfirmationModal";
 import { ExportPdfModal } from "./components/ExportPdfModal";
 import { SplashScreen } from "./components/SplashScreen";
 import { CompanyManagerModal } from "./components/CompanyManagerModal";
 import { BankAccountsModal } from "./components/BankAccountsModal";
+import { BatchImportModal } from "./components/BatchImportModal";
+import { BatchPrintRunnerModal } from "./components/BatchPrintRunnerModal";
+import { BatchReportModal } from "./components/BatchReportModal";
 import {
   saveChequeRecord,
   findDuplicateCheque,
@@ -27,6 +43,9 @@ import {
   updatePrintAttemptStatus,
   getActiveCompany,
   getBankAccounts,
+  getChequeBooks,
+  saveChequeBook,
+  saveBatchCheques,
   getActiveChequeBookForAccount,
   incrementChequeBookNumber,
   updateAccountBalance
@@ -219,6 +238,17 @@ export default function App() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [activeChequeBook, setActiveChequeBook] = useState<ChequeBookRecord | null>(null);
 
+  // Module 1.6 : Importation et traitement en lot
+  const [showBatchImportModal, setShowBatchImportModal] = useState<boolean>(false);
+  const [showBatchRunnerModal, setShowBatchRunnerModal] = useState<boolean>(false);
+  const [showBatchReportModal, setShowBatchReportModal] = useState<boolean>(false);
+  const [batchRunnerItems, setBatchRunnerItems] = useState<BatchItem[]>([]);
+  const [batchRunnerAccountId, setBatchRunnerAccountId] = useState<string | undefined>(undefined);
+  const [batchRunnerChequeBookId, setBatchRunnerChequeBookId] = useState<string | undefined>(undefined);
+  const [batchRunnerAutoRecordBen, setBatchRunnerAutoRecordBen] = useState<boolean>(true);
+  const [batchExecutionReport, setBatchExecutionReport] = useState<BatchExecutionReport | null>(null);
+  const [allChequeBooks, setAllChequeBooks] = useState<ChequeBookRecord[]>([]);
+
   // 6. Feedback / Toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null);
 
@@ -242,6 +272,26 @@ export default function App() {
       console.warn("Erreur chargement comptes bancaires entreprise:", err);
     }
   }, []);
+
+  // Charger tous les chéquiers associés aux comptes de l'entreprise
+  const refreshChequeBooks = useCallback(async () => {
+    if (companyAccounts.length === 0) {
+      setAllChequeBooks([]);
+      return;
+    }
+    try {
+      const lists = await Promise.all(
+        companyAccounts.map((acc) => getChequeBooks(acc.id))
+      );
+      setAllChequeBooks(lists.flat());
+    } catch (err) {
+      console.warn("Erreur chargement chéquiers:", err);
+    }
+  }, [companyAccounts]);
+
+  useEffect(() => {
+    refreshChequeBooks();
+  }, [refreshChequeBooks]);
 
   // Multi-sociétés : chargement de l'entreprise active et écoute des changements de dossier
   useEffect(() => {
@@ -808,6 +858,244 @@ export default function App() {
     window.print();
   };
 
+  // =========================================================================
+  // MODULE 1.6 : IMPORTATION ET TRAITEMENT EN LOT
+  // =========================================================================
+
+  // Traitement en lot : Sauvegarde directe dans l'historique
+  const handleSaveBatch = async (
+    items: BatchItem[],
+    targetAccountId?: string,
+    targetChequeBookId?: string,
+    autoIncrementChequeNumber: boolean = true,
+    autoRecordBeneficiaries: boolean = true
+  ) => {
+    const compId = activeCompany?.id || "company-default";
+    const acc = companyAccounts.find((a) => a.id === targetAccountId) || companyAccounts[0];
+    const targetTpl = templates.find((t) => t.id === acc?.bankTemplateId) || currentTemplate;
+    const now = new Date().toISOString();
+
+    const targetBook = allChequeBooks.find((b) => b.id === targetChequeBookId) || activeChequeBook;
+    let nextNum = targetBook?.currentNumber || "0000001";
+    const recordsToSave: ChequeRecord[] = [];
+    const results: BatchExecutionReport["items"] = [];
+
+    for (const item of items) {
+      let assignedNumber = item.chequeNumber;
+      if (autoIncrementChequeNumber) {
+        assignedNumber = assignedNumber || nextNum;
+        const parsed = parseInt(nextNum, 10);
+        if (!isNaN(parsed)) {
+          nextNum = String(parsed + 1).padStart(nextNum.length, "0");
+        }
+      }
+
+      const recId = "cheque-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
+      const chequeRec: ChequeRecord = {
+        id: recId,
+        companyId: compId,
+        accountId: targetAccountId || selectedAccountId || undefined,
+        chequeBookId: targetChequeBookId || activeChequeBook?.id || undefined,
+        amount: item.formattedAmount,
+        beneficiary: item.beneficiary,
+        place: item.place || place,
+        date: item.date || date,
+        chequeNumber: assignedNumber,
+        showChequeNumber: Boolean(assignedNumber),
+        reference: item.reference,
+        bankTemplateId: targetTpl.id,
+        bankName: targetTpl.name,
+        status: "saved",
+        printCount: 0,
+        createdAt: now,
+        updatedAt: now
+      };
+
+      recordsToSave.push(chequeRec);
+
+      results.push({
+        beneficiary: item.beneficiary,
+        amount: item.formattedAmount,
+        chequeNumber: assignedNumber,
+        status: "saved",
+        reason: item.statusMessage
+      });
+    }
+
+    // Sauvegarde en lot dans SQLite / LocalStorage
+    await saveBatchCheques(recordsToSave, autoRecordBeneficiaries);
+
+    // Mettre à jour le chéquier actif avec le nouveau numéro
+    if (targetBook && autoIncrementChequeNumber) {
+      const updatedBook: ChequeBookRecord = {
+        ...targetBook,
+        currentNumber: nextNum,
+        leavesUsed: targetBook.leavesUsed + recordsToSave.length
+      };
+      await saveChequeBook(updatedBook);
+      if (activeChequeBook?.id === targetBook.id) {
+        setActiveChequeBook(updatedBook);
+      }
+      refreshChequeBooks();
+    }
+
+    // Déduire le solde bancaire
+    if (targetAccountId) {
+      const totalDeduction = items.reduce((sum, i) => sum + i.numericAmount, 0);
+      await updateAccountBalance(targetAccountId, -totalDeduction);
+      if (activeCompany) loadCompanyAccounts(activeCompany.id);
+    }
+
+    setHistoryRefreshTrigger((n) => n + 1);
+
+    const totalAmount = items.reduce((sum, i) => sum + i.numericAmount, 0);
+    const report: BatchExecutionReport = {
+      batchId: "batch-save-" + Date.now(),
+      companyId: compId,
+      companyName: activeCompany?.name || "Virtanis",
+      accountId: targetAccountId,
+      accountLabel: acc ? `${acc.label} (${acc.ribOrIban})` : undefined,
+      totalRowsRead: items.length,
+      totalImported: items.length,
+      totalPrinted: 0,
+      totalErrors: 0,
+      totalDuplicatesDetected: 0,
+      totalAmountNumeric: totalAmount,
+      totalAmountFormatted: totalAmount.toLocaleString("fr-FR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }),
+      executedAt: now,
+      items: results
+    };
+
+    setBatchExecutionReport(report);
+    setShowBatchReportModal(true);
+
+    setToast({
+      message: `${items.length} chèque(s) importé(s) et enregistré(s) avec succès dans l'historique !`,
+      type: "success"
+    });
+  };
+
+  // Traitement en lot : Démarrer le runner d'impression successive
+  const handleStartSequentialPrint = (
+    items: BatchItem[],
+    targetAccountId?: string,
+    targetChequeBookId?: string,
+    autoIncrementChequeNumber: boolean = true,
+    autoRecordBeneficiaries: boolean = true
+  ) => {
+    setBatchRunnerItems(items);
+    setBatchRunnerAccountId(targetAccountId);
+    setBatchRunnerChequeBookId(targetChequeBookId);
+    setBatchRunnerAutoRecordBen(autoRecordBeneficiaries);
+    setShowBatchRunnerModal(true);
+  };
+
+  // Impression individuelle successive depuis le runner
+  const handlePrintBatchItem = async (
+    item: BatchItem,
+    assignedChequeNumber: string
+  ): Promise<{ success: boolean; error?: string; chequeId: string }> => {
+    const compId = activeCompany?.id || "company-default";
+    const acc = companyAccounts.find((a) => a.id === batchRunnerAccountId) || companyAccounts[0];
+    const targetTpl = templates.find((t) => t.id === acc?.bankTemplateId) || currentTemplate;
+    const now = new Date().toISOString();
+    const recId = "cheque-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
+
+    // Mettre à jour l'état de l'écran principal pour la mise en page d'impression
+    setAmount(item.formattedAmount);
+    setBeneficiary(item.beneficiary);
+    setDate(item.date);
+    setPlace(item.place);
+    setChequeNumber(assignedChequeNumber);
+    setShowChequeNumber(true);
+    setSelectedTemplateId(targetTpl.id);
+
+    const chequeRec: ChequeRecord = {
+      id: recId,
+      companyId: compId,
+      accountId: acc?.id,
+      chequeBookId: batchRunnerChequeBookId || activeChequeBook?.id,
+      amount: item.formattedAmount,
+      beneficiary: item.beneficiary,
+      place: item.place || place,
+      date: item.date || date,
+      chequeNumber: assignedChequeNumber,
+      showChequeNumber: true,
+      reference: item.reference,
+      bankTemplateId: targetTpl.id,
+      bankName: targetTpl.name,
+      status: "printed",
+      printCount: 1,
+      createdAt: now,
+      updatedAt: now,
+      printedAt: now
+    };
+
+    try {
+      await saveChequeRecord(chequeRec);
+      if (batchRunnerAutoRecordBen) {
+        await autoRecordBeneficiary(item.beneficiary, compId);
+      }
+
+      // Logger la tentative d'impression au statut confirmé
+      const attemptId = "attempt-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
+      await logPrintAttempt({
+        id: attemptId,
+        chequeId: recId,
+        companyId: compId,
+        beneficiary: item.beneficiary,
+        amount: item.formattedAmount,
+        bankName: targetTpl.name,
+        bankTemplateId: targetTpl.id,
+        paperFormat: printSettings.paperFormat,
+        placement: printSettings.placement,
+        status: "confirmed",
+        attemptedAt: now,
+        confirmedAt: now,
+        copyNumber: 1
+      });
+
+      // Déduire le solde bancaire
+      if (acc?.id) {
+        await updateAccountBalance(acc.id, -item.numericAmount);
+      }
+
+      // Incrémenter le chéquier
+      if (batchRunnerChequeBookId) {
+        await incrementChequeBookNumber(batchRunnerChequeBookId);
+      }
+
+      // Lancer l'impression physique
+      window.print();
+
+      return { success: true, chequeId: recId };
+    } catch (err: any) {
+      console.error("Erreur impression chèque lot:", err);
+      return { success: false, error: err?.message || "Erreur d'impression", chequeId: recId };
+    }
+  };
+
+  const handleFinishBatchRunner = (report: BatchExecutionReport) => {
+    setShowBatchRunnerModal(false);
+    setBatchExecutionReport(report);
+    setShowBatchReportModal(true);
+    setHistoryRefreshTrigger((n) => n + 1);
+    if (activeCompany) loadCompanyAccounts(activeCompany.id);
+    refreshChequeBooks();
+  };
+
+  const handleDissociateAccount = () => {
+    setSelectedAccountId(null);
+    setActiveChequeBook(null);
+    setToast({
+      message: "Compte bancaire et chéquier dissociés du chèque en cours.",
+      type: "info"
+    });
+  };
+
   // Handlers pour l'Historique
   const handleCloneToHome = (record: ChequeRecord) => {
     setAmount(record.amount);
@@ -990,6 +1278,7 @@ export default function App() {
             onDeleteRecord={handleDeleteHistoryRecord}
             onClearHistory={handleClearHistory}
             onBackToHome={() => setActiveTab("home")}
+            onOpenBatchImport={() => setShowBatchImportModal(true)}
           />
         ) : activeTab === "beneficiaries" ? (
           <BeneficiariesPage
@@ -1035,7 +1324,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Barre d'actions supérieure (Nouveau chèque, Enregistrer, Modifier, Imprimer) */}
+              {/* Barre d'actions supérieure (Nouveau chèque, Enregistrer, Modifier, Imprimer, Traitement en lot) */}
               <ActionBar
                 onNew={handleNewCheque}
                 showNewButton={hasChequeData}
@@ -1043,6 +1332,7 @@ export default function App() {
                 onSave={handleSave}
                 onPrint={handlePrint}
                 onOpenBankAccounts={() => setShowBankAccountsModal(true)}
+                onOpenBatchImport={() => setShowBatchImportModal(true)}
                 onExportPdf={() => {
                   const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
                   if (isNaN(rawVal) || rawVal <= 0) {
@@ -1080,6 +1370,7 @@ export default function App() {
                   onChangeSelectedAccountId={setSelectedAccountId}
                   activeChequeBook={activeChequeBook}
                   onOpenBankAccountsModal={() => setShowBankAccountsModal(true)}
+                  onDissociateAccount={handleDissociateAccount}
                   onSubmit={handleSubmitForm}
                 />
 
@@ -1521,6 +1812,10 @@ export default function App() {
         currentAccountId={selectedAccountId}
         currentChequeBookId={activeChequeBook?.id}
         onAccountSelected={(acc, nextChequeNum, selectedBook) => {
+          if (!acc) {
+            handleDissociateAccount();
+            return;
+          }
           setSelectedAccountId(acc.id);
           setSelectedTemplateId(acc.bankTemplateId);
           if (selectedBook) {
@@ -1535,6 +1830,46 @@ export default function App() {
             type: "success"
           });
         }}
+      />
+
+      {/* Module 1.6 : Modal Importation et Traitement en Lot */}
+      <BatchImportModal
+        isOpen={showBatchImportModal}
+        onClose={() => setShowBatchImportModal(false)}
+        existingCheques={history}
+        companyAccounts={companyAccounts}
+        chequeBooks={allChequeBooks}
+        activeAccountId={selectedAccountId || undefined}
+        activeCompanyId={activeCompany?.id || "company-default"}
+        templates={templates}
+        currentTemplate={currentTemplate}
+        onSaveBatch={handleSaveBatch}
+        onStartSequentialPrint={handleStartSequentialPrint}
+        onOpenBankAccounts={() => setShowBankAccountsModal(true)}
+      />
+
+      {/* Module 1.6 : Modal Runner d'impression successive */}
+      {showBatchRunnerModal && (
+        <BatchPrintRunnerModal
+          isOpen={showBatchRunnerModal}
+          onClose={() => setShowBatchRunnerModal(false)}
+          items={batchRunnerItems}
+          targetAccount={companyAccounts.find((a) => a.id === batchRunnerAccountId)}
+          targetChequeBook={allChequeBooks.find((b) => b.id === batchRunnerChequeBookId)}
+          templates={templates}
+          printSettings={printSettings}
+          companyId={activeCompany?.id || "company-default"}
+          companyName={activeCompany?.name || "Virtanis"}
+          onPrintCurrentItem={handlePrintBatchItem}
+          onFinishRunner={handleFinishBatchRunner}
+        />
+      )}
+
+      {/* Module 1.6 : Rapport de Traitement et Audit du lot */}
+      <BatchReportModal
+        isOpen={showBatchReportModal}
+        onClose={() => setShowBatchReportModal(false)}
+        report={batchExecutionReport}
       />
 
       {/* Dedicated Print Layer (Hidden on screen, exact 100% physical mm on printer) */}

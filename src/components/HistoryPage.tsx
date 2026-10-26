@@ -64,6 +64,7 @@ interface HistoryPageProps {
   onDeleteRecord?: (id: string) => void;
   onClearHistory?: () => void;
   onBackToHome: () => void;
+  onOpenBatchImport?: () => void;
   refreshTrigger?: number;
   activeCompanyId?: string;
 }
@@ -75,6 +76,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   onDeleteRecord,
   onClearHistory,
   onBackToHome,
+  onOpenBatchImport,
   refreshTrigger = 0,
   activeCompanyId
 }) => {
@@ -617,6 +619,18 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
           </div>
 
           <div className="header-actions-group">
+            {activeView === "cheques" && onOpenBatchImport && (
+              <button
+                type="button"
+                className="btn-action-card"
+                onClick={onOpenBatchImport}
+                title="Importer des paiements depuis Excel/CSV et traiter des chèques en lot"
+              >
+                <FileSpreadsheet size={16} className="btn-action-icon text-emerald" />
+                <span>Importer un lot</span>
+              </button>
+            )}
+
             {activeView === "cheques" && (
               <button
                 type="button"

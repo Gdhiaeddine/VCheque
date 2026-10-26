@@ -8307,6 +8307,29 @@ button {
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.btn-pill-dissociate-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  background: transparent;
+  border: none;
+  color: #0369a1;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.btn-pill-dissociate-x:hover {
+  background: #bae6fd;
+  color: #b91c1c;
 }
 
 .account-default-tag {
@@ -8393,6 +8416,33 @@ button {
   background: #d1fae5;
   border-color: #059669;
   transform: none;
+}
+
+.account-use-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-dissociate-account-modal {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ffffff;
+  color: #b91c1c;
+  border: 1.5px solid #fca5a5;
+  padding: 6.5px 12px;
+  border-radius: var(--radius-xs);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-dissociate-account-modal:hover {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
 }
 
 .account-summary-cards {
@@ -8554,6 +8604,33 @@ button {
   border-radius: 4px;
   font-size: 11px;
   font-weight: 700;
+}
+
+.book-selected-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-dissociate-book-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #ffffff;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-dissociate-book-mini:hover {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
 }
 
 .btn-use-book {
@@ -9373,6 +9450,13 @@ button {
   white-space: nowrap;
 }
 
+.issuing-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
 .issuing-account-select {
   flex: 1;
   background-color: #ffffff;
@@ -9392,6 +9476,27 @@ button {
   border-color: var(--gold-primary);
 }
 
+.btn-dissociate-account-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #64748b;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.btn-dissociate-account-x:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
 .issuing-chequebook-pill {
   display: inline-flex;
   align-items: center;
@@ -9402,6 +9507,27 @@ button {
   padding: 4px 10px;
   font-size: 11.5px;
   color: var(--text-primary);
+}
+
+.btn-dissociate-chequebook-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  margin-left: 2px;
+  transition: all var(--transition-fast);
+}
+
+.btn-dissociate-chequebook-x:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
 }
 
 .chequebook-num-badge {
@@ -9484,5 +9610,476 @@ button {
   border: none;
   border-radius: 4px;
   background: #ffffff;
+}
+
+
+/* =========================================================================
+   MODULE 1.6 : IMPORTATION ET TRAITEMENT EN LOT (DESIGN STANDARD & HARMONIEUX)
+   ========================================================================= */
+
+/* Stepper horizontal épuré sous l'en-tête du modal */
+.batch-stepper-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 10px 24px;
+  background-color: #faf8f5;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.batch-step-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  transition: all var(--transition-fast);
+}
+
+.batch-step-tab:hover {
+  color: var(--text-primary);
+}
+
+.batch-step-tab.active {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.batch-step-tab.completed {
+  color: #047857;
+}
+
+.step-circle {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.batch-step-tab.active .step-circle {
+  background: var(--gold-dark);
+  color: #ffffff;
+  border-color: var(--gold-dark);
+}
+
+.batch-step-tab.completed .step-circle {
+  background: #10b981;
+  color: #ffffff;
+  border-color: #059669;
+}
+
+.step-chevron {
+  color: var(--text-muted);
+}
+
+/* Contenu de chaque étape */
+.batch-step-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Étape 1 : Zone de glisser-déposer */
+.batch-dropzone-box {
+  border: 2px dashed #cbd5e1;
+  background: #faf8f5;
+  border-radius: var(--radius-sm);
+  padding: 38px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.batch-dropzone-box:hover {
+  border-color: var(--gold-primary);
+  background: #fdfbf7;
+}
+
+.dropzone-icon-circle {
+  width: 58px;
+  height: 58px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(172, 137, 70, 0.15), rgba(172, 137, 70, 0.05));
+  border: 1px solid rgba(172, 137, 70, 0.25);
+  color: var(--gold-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.dropzone-heading {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px 0;
+}
+
+.dropzone-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 18px 0;
+  max-width: 480px;
+}
+
+.batch-sample-box {
+  background: #faf8f5;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sample-box-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Étape 2 : Mapping */
+.batch-file-summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #faf8f5;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  padding: 10px 16px;
+}
+
+.batch-file-summary-card .summary-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mapping-list-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mapping-item-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  padding: 10px 16px;
+  transition: all var(--transition-fast);
+}
+
+.mapping-item-card:hover {
+  background: #fdfbf7;
+  border-color: #cbd5e1;
+}
+
+.mapping-item-card.required {
+  border-left: 3px solid var(--gold-primary);
+}
+
+.mapping-item-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.mapping-item-control {
+  width: 340px;
+}
+
+/* Étape 3 : Grille de contrôle & Configuration bancaire */
+.batch-account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #faf8f5;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  padding: 10px 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.chequebook-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  padding: 5px 12px;
+}
+
+.active-filter-card {
+  box-shadow: 0 0 0 2px var(--gold-primary) !important;
+  background: #fdfbf7 !important;
+}
+
+.batch-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.batch-table-wrap {
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  background: #ffffff;
+}
+
+.batch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.batch-table th {
+  background-color: #f8fafc;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-align: left;
+}
+
+.batch-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.batch-row {
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.batch-row:hover {
+  background: #fbf9f5;
+}
+
+.batch-row.row-selected {
+  background: #f0fdf4;
+}
+
+/* Runner d'impression successive */
+.runner-progress-row {
+  padding: 12px 24px;
+  background: #faf8f5;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.runner-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.runner-progress-track {
+  width: 100%;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.runner-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold-primary) 0%, #059669 100%);
+  transition: width 0.3s ease;
+}
+
+/* Carte Chèque Réaliste Scellée et Épurée */
+.runner-cheque-preview-card {
+  background: #ffffff;
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius-sm);
+  padding: 20px 22px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+}
+
+.runner-cheque-preview-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--gold-primary), #12614a);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.runner-cheque-preview-card .cheque-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px dashed rgba(172, 137, 70, 0.3);
+  padding-bottom: 10px;
+}
+
+.runner-cheque-preview-card .card-bank-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.runner-cheque-preview-card .card-rib {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: #f8fafc;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+}
+
+.runner-cheque-preview-card .card-cheque-number-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.runner-cheque-preview-card .card-cheque-number-box .num-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--gold-dark);
+}
+
+.runner-cheque-preview-card .cheque-number-field {
+  width: 100px;
+  padding: 4px 8px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.runner-cheque-preview-card .cheque-card-middle {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.runner-cheque-preview-card .card-field-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.runner-cheque-preview-card .card-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.4px;
+}
+
+.runner-cheque-preview-card .card-field-words {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px dotted #cbd5e1;
+  flex: 1;
+}
+
+.runner-cheque-preview-card .card-field-beneficiary {
+  font-size: 14px;
+  font-weight: 700;
+  color: #12614a;
+  border-bottom: 1px dotted #cbd5e1;
+  flex: 1;
+}
+
+.runner-cheque-preview-card .cheque-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-top: 1px dashed rgba(172, 137, 70, 0.3);
+  padding-top: 12px;
+}
+
+.runner-cheque-preview-card .card-bottom-left {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+}
+
+.runner-cheque-preview-card .card-val {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-left: 4px;
+}
+
+.runner-cheque-preview-card .card-ref-badge {
+  margin-left: 12px;
+  font-size: 11px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+.runner-cheque-preview-card .card-amount-box {
+  background: #fdfbf7;
+  border: 1.5px solid var(--gold-border);
+  padding: 5px 14px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.runner-cheque-preview-card .card-amount-box .amount-currency {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold-dark);
+}
+
+.runner-cheque-preview-card .card-amount-box .amount-number {
+  font-size: 16px;
+  font-weight: 800;
+  color: #12614a;
+}
+
+.printer-instruction-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fdfbf7;
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius-xs);
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 

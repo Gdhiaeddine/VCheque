@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { User, MapPin, Calendar, Sparkles, CheckSquare, ShieldCheck, Clock, Check, Hash, CreditCard, BookOpen } from "lucide-react";
+import { User, MapPin, Calendar, Sparkles, CheckSquare, ShieldCheck, Clock, Check, Hash, CreditCard, BookOpen, X } from "lucide-react";
 import { searchBeneficiaries } from "../services/db";
 import type { BeneficiaryRecord, BankAccountRecord, ChequeBookRecord } from "../types";
 
@@ -23,9 +23,10 @@ interface CheckFormProps {
   onChangeChequeNumber?: (val: string) => void;
   accounts?: BankAccountRecord[];
   selectedAccountId?: string | null;
-  onChangeSelectedAccountId?: (accId: string) => void;
+  onChangeSelectedAccountId?: (accId: string | null) => void;
   activeChequeBook?: ChequeBookRecord | null;
   onOpenBankAccountsModal?: () => void;
+  onDissociateAccount?: () => void;
   onSubmit: () => void;
 }
 
@@ -48,10 +49,11 @@ export const CheckForm: React.FC<CheckFormProps> = ({
   chequeNumber = "",
   onChangeChequeNumber,
   accounts = [],
-  selectedAccountId,
+  selectedAccountId = null,
   onChangeSelectedAccountId,
-  activeChequeBook,
+  activeChequeBook = null,
   onOpenBankAccountsModal,
+  onDissociateAccount,
   onSubmit
 }) => {
   // Autocomplete state
@@ -182,21 +184,48 @@ export const CheckForm: React.FC<CheckFormProps> = ({
                 <CreditCard size={15} className="text-gold" />
                 <span className="issuing-label-title">Compte émetteur :</span>
               </div>
-              <select
-                className="issuing-account-select"
-                value={selectedAccountId || ""}
-                onChange={(e) => onChangeSelectedAccountId?.(e.target.value)}
-                title="Sélectionner le compte bancaire émetteur de l'entreprise"
-              >
-                {accounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.label} ({acc.ribOrIban ? `...${acc.ribOrIban.slice(-4)}` : "Sans RIB"}) — {acc.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
-                  </option>
-                ))}
-              </select>
+              <div className="issuing-select-wrap">
+                <select
+                  className="issuing-account-select"
+                  value={selectedAccountId || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val) {
+                      onChangeSelectedAccountId?.(null);
+                      onDissociateAccount?.();
+                    } else {
+                      onChangeSelectedAccountId?.(val);
+                    }
+                  }}
+                  title="Sélectionner le compte bancaire émetteur de l'entreprise"
+                >
+                  <option value="">-- Aucun compte associé (chèque libre) --</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.label} ({acc.ribOrIban ? `...${acc.ribOrIban.slice(-4)}` : "Sans RIB"}) — {acc.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
+                    </option>
+                  ))}
+                </select>
+
+                {/* Bouton X pour dissocier le compte sélectionné */}
+                {selectedAccountId && (
+                  <button
+                    type="button"
+                    className="btn-dissociate-account-x"
+                    onClick={() => {
+                      onChangeSelectedAccountId?.(null);
+                      onDissociateAccount?.();
+                    }}
+                    title="Dissocier ce compte et ce chéquier du chèque (X)"
+                    aria-label="Dissocier le compte"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </div>
 
-            {activeChequeBook ? (
+            {selectedAccountId && activeChequeBook && (
               <div
                 className="issuing-chequebook-pill"
                 title={`Chéquier ${activeChequeBook.seriesName} (${activeChequeBook.leavesTotal - activeChequeBook.leavesUsed} chèques restants)`}
@@ -211,8 +240,23 @@ export const CheckForm: React.FC<CheckFormProps> = ({
                 <span className="chequebook-leaves-badge">
                   {activeChequeBook.leavesTotal - activeChequeBook.leavesUsed} restant{activeChequeBook.leavesTotal - activeChequeBook.leavesUsed > 1 ? "s" : ""}
                 </span>
+
+                {/* Bouton X pour dissocier le chéquier et compte */}
+                <button
+                  type="button"
+                  className="btn-dissociate-chequebook-x"
+                  onClick={() => {
+                    onChangeSelectedAccountId?.(null);
+                    onDissociateAccount?.();
+                  }}
+                  title="Dissocier ce chéquier et ce compte du chèque (X)"
+                  aria-label="Dissocier le chéquier"
+                >
+                  <X size={13} />
+                </button>
               </div>
-            ) : (
+            )}
+            {selectedAccountId && !activeChequeBook && (
               <button
                 type="button"
                 className="issuing-add-chequebook-btn"
