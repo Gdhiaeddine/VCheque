@@ -10,7 +10,10 @@ import type {
   CompanyRecord,
   BankAccountRecord,
   ChequeBookRecord,
-  ChequeAttachmentRecord
+  ChequeAttachmentRecord,
+  BankStatementRecord,
+  BankStatementLineRecord,
+  ReconciliationStatus
 } from "../types";
 
 export const HISTORIQUE_STORAGE_KEY = "cheque-studio-history-v1";
@@ -21,6 +24,8 @@ export const COMPANIES_STORAGE_KEY = "cheque-studio-companies-v1";
 export const BANK_ACCOUNTS_STORAGE_KEY = "cheque-studio-bank-accounts-v1";
 export const CHEQUE_BOOKS_STORAGE_KEY = "cheque-studio-cheque-books-v1";
 export const ATTACHMENTS_STORAGE_KEY = "cheque-studio-attachments-v1";
+export const BANK_STATEMENTS_STORAGE_KEY = "cheque-studio-bank-statements-v1";
+export const BANK_STATEMENT_LINES_STORAGE_KEY = "cheque-studio-bank-statement-lines-v1";
 export const ACTIVE_COMPANY_KEY = "vcheque_active_company_id";
 const DB_PATH = "sqlite:cheques.db";
 
@@ -340,12 +345,92 @@ export async function getDatabase(): Promise<Database | null> {
         mime_type TEXT NOT NULL,
         local_path TEXT,
         data_base64 TEXT,
+        doc_type TEXT,
+        doc_reference TEXT,
+        doc_amount REAL,
+        is_proof_of_debit INTEGER DEFAULT 0,
         created_at TEXT NOT NULL
       );
     `);
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheque_attachments_cheque ON cheque_attachments(cheque_id);`);
 
-    // 9. Migration transparente depuis localStorage si les tables SQLite sont vides
+    // 9. Table des relevés bancaires
+    await dbInstance.execute(`
+      CREATE TABLE IF NOT EXISTS bank_statements (
+        id TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        file_format TEXT NOT NULL,
+        statement_date TEXT NOT NULL,
+        period_start TEXT,
+        period_end TEXT,
+        starting_balance REAL,
+        ending_balance REAL,
+        total_debit REAL DEFAULT 0,
+        total_credit REAL DEFAULT 0,
+        lines_count INTEGER DEFAULT 0,
+        reconciled_count INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+    `);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_bank_statements_acc ON bank_statements(account_id);`);
+
+    // 10. Table des lignes d'opérations bancaires
+    await dbInstance.execute(`
+      CREATE TABLE IF NOT EXISTS bank_statement_lines (
+        id TEXT PRIMARY KEY,
+        statement_id TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        operation_date TEXT NOT NULL,
+        value_date TEXT,
+        label TEXT NOT NULL,
+        reference TEXT,
+        debit REAL,
+        credit REAL,
+        balance REAL,
+        reconciliation_status TEXT DEFAULT 'unmatched',
+        matched_cheque_id TEXT,
+        reconciled_at TEXT,
+        reconciled_by TEXT,
+        confidence_score REAL,
+        extracted_cheque_number TEXT
+      );
+    `);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_statement_lines_stmt ON bank_statement_lines(statement_id);`);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_statement_lines_match ON bank_statement_lines(matched_cheque_id);`);
+
+    // Migrations légères de colonnes pour bases SQLite déjà créées
+    try {
+      await dbInstance.execute(`ALTER TABLE cheque_attachments ADD COLUMN doc_type TEXT;`);
+    } catch { /* Déjà existante */ }
+    try {
+      await dbInstance.execute(`ALTER TABLE cheque_attachments ADD COLUMN doc_reference TEXT;`);
+    } catch { /* Déjà existante */ }
+    try {
+      await dbInstance.execute(`ALTER TABLE cheque_attachments ADD COLUMN doc_amount REAL;`);
+    } catch { /* Déjà existante */ }
+    try {
+      await dbInstance.execute(`ALTER TABLE cheque_attachments ADD COLUMN is_proof_of_debit INTEGER DEFAULT 0;`);
+    } catch { /* Déjà existante */ }
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN reconciled_line_id TEXT;`);
+    } catch { /* Déjà existante */ }
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN reconciled_statement_id TEXT;`);
+    } catch { /* Déjà existante */ }
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN reconciled_at TEXT;`);
+    } catch { /* Déjà existante */ }
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN proof_attachment_id TEXT;`);
+    } catch { /* Déjà existante */ }
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN is_cashed_declared_without_proof INTEGER DEFAULT 0;`);
+    } catch { /* Déjà existante */ }
+
+    // 11. Migration transparente depuis localStorage si les tables SQLite sont vides
     await migrateFromLocalStorageIfEmpty(dbInstance);
     await migrateBeneficiariesIfEmpty(dbInstance);
 
@@ -2743,13 +2828,18 @@ export async function getChequeAttachments(chequeId: string): Promise<ChequeAtta
   try {
     const rows = await db.select<any[]>(
       `SELECT id, cheque_id as chequeId, file_name as fileName, file_size as fileSize,
-              mime_type as mimeType, local_path as localPath, data_base64 as dataBase64, created_at as createdAt
+              mime_type as mimeType, local_path as localPath, data_base64 as dataBase64,
+              doc_type as docType, doc_reference as docReference, doc_amount as docAmount,
+              is_proof_of_debit as isProofOfDebit, created_at as createdAt
        FROM cheque_attachments 
        WHERE cheque_id = $1 
        ORDER BY created_at DESC;`,
       [chequeId]
     );
-    return rows || [];
+    return (rows || []).map((r) => ({
+      ...r,
+      isProofOfDebit: Boolean(r.isProofOfDebit)
+    }));
   } catch (err) {
     console.warn("Erreur getChequeAttachments SQLite:", err);
     return getLocalChequeAttachments(chequeId);
@@ -2763,8 +2853,9 @@ export async function saveChequeAttachment(att: ChequeAttachmentRecord): Promise
     try {
       await db.execute(
         `INSERT OR REPLACE INTO cheque_attachments (
-          id, cheque_id, file_name, file_size, mime_type, local_path, data_base64, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+          id, cheque_id, file_name, file_size, mime_type, local_path, data_base64,
+          doc_type, doc_reference, doc_amount, is_proof_of_debit, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
         [
           att.id,
           att.chequeId,
@@ -2773,6 +2864,10 @@ export async function saveChequeAttachment(att: ChequeAttachmentRecord): Promise
           att.mimeType,
           att.localPath || null,
           att.dataBase64 || null,
+          att.docType || "other",
+          att.docReference || null,
+          att.docAmount || null,
+          att.isProofOfDebit ? 1 : 0,
           att.createdAt
         ]
       );
@@ -2879,3 +2974,406 @@ export async function saveBatchCheques(
 
   return { success: true, count: records.length };
 }
+
+/* ==========================================================================
+   MODULE RAPPROCHEMENT BANCAIRE : RELEVÉS & LIGNES D'OPÉRATIONS
+   ========================================================================== */
+
+function getLocalBankStatements(companyId: string, accountId?: string): BankStatementRecord[] {
+  try {
+    const raw = localStorage.getItem(BANK_STATEMENTS_STORAGE_KEY);
+    if (!raw) return [];
+    const list: BankStatementRecord[] = JSON.parse(raw);
+    return list.filter((s) => s.companyId === companyId && (!accountId || s.accountId === accountId));
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalBankStatement(statement: BankStatementRecord, lines: BankStatementLineRecord[]): void {
+  try {
+    // 1. Sauvegarder l'en-tête du relevé
+    const rawStmts = localStorage.getItem(BANK_STATEMENTS_STORAGE_KEY);
+    const stmts: BankStatementRecord[] = rawStmts ? JSON.parse(rawStmts) : [];
+    const sIdx = stmts.findIndex((s) => s.id === statement.id);
+    if (sIdx >= 0) {
+      stmts[sIdx] = statement;
+    } else {
+      stmts.unshift(statement);
+    }
+    localStorage.setItem(BANK_STATEMENTS_STORAGE_KEY, JSON.stringify(stmts));
+
+    // 2. Sauvegarder les lignes
+    const rawLines = localStorage.getItem(BANK_STATEMENT_LINES_STORAGE_KEY);
+    let allLines: BankStatementLineRecord[] = rawLines ? JSON.parse(rawLines) : [];
+    // Remplacer les anciennes lignes de ce relevé si présentes
+    allLines = allLines.filter((l) => l.statementId !== statement.id);
+    allLines.push(...lines);
+    localStorage.setItem(BANK_STATEMENT_LINES_STORAGE_KEY, JSON.stringify(allLines));
+  } catch (err) {
+    console.error("Erreur sauvegarde locale relevé:", err);
+  }
+}
+
+export async function getBankStatements(companyId: string, accountId?: string): Promise<BankStatementRecord[]> {
+  const db = await getDatabase();
+  if (!db) return getLocalBankStatements(companyId, accountId);
+
+  try {
+    let query = `
+      SELECT id, company_id as companyId, account_id as accountId, file_name as fileName,
+             file_format as fileFormat, statement_date as statementDate, period_start as periodStart,
+             period_end as periodEnd, starting_balance as startingBalance, ending_balance as endingBalance,
+             total_debit as totalDebit, total_credit as totalCredit, lines_count as linesCount,
+             reconciled_count as reconciledCount, created_at as createdAt
+      FROM bank_statements
+      WHERE company_id = $1
+    `;
+    const params: any[] = [companyId];
+
+    if (accountId) {
+      query += ` AND account_id = $2`;
+      params.push(accountId);
+    }
+
+    query += ` ORDER BY statement_date DESC, created_at DESC;`;
+
+    const rows = await db.select<BankStatementRecord[]>(query, params);
+    return rows || [];
+  } catch (err) {
+    console.warn("Erreur getBankStatements SQLite:", err);
+    return getLocalBankStatements(companyId, accountId);
+  }
+}
+
+export async function saveBankStatement(
+  statement: BankStatementRecord,
+  lines: BankStatementLineRecord[]
+): Promise<void> {
+  saveLocalBankStatement(statement, lines);
+  const db = await getDatabase();
+  if (db) {
+    try {
+      // 1. En-tête
+      await db.execute(
+        `INSERT OR REPLACE INTO bank_statements (
+          id, company_id, account_id, file_name, file_format, statement_date,
+          period_start, period_end, starting_balance, ending_balance,
+          total_debit, total_credit, lines_count, reconciled_count, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);`,
+        [
+          statement.id,
+          statement.companyId,
+          statement.accountId,
+          statement.fileName,
+          statement.fileFormat,
+          statement.statementDate,
+          statement.periodStart || null,
+          statement.periodEnd || null,
+          statement.startingBalance ?? null,
+          statement.endingBalance ?? null,
+          statement.totalDebit,
+          statement.totalCredit,
+          statement.linesCount,
+          statement.reconciledCount,
+          statement.createdAt
+        ]
+      );
+
+      // 2. Lignes
+      await db.execute(`DELETE FROM bank_statement_lines WHERE statement_id = $1;`, [statement.id]);
+      for (const l of lines) {
+        await db.execute(
+          `INSERT INTO bank_statement_lines (
+            id, statement_id, account_id, company_id, operation_date, value_date,
+            label, reference, debit, credit, balance, reconciliation_status,
+            matched_cheque_id, reconciled_at, reconciled_by, confidence_score, extracted_cheque_number
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);`,
+          [
+            l.id,
+            l.statementId,
+            l.accountId,
+            l.companyId,
+            l.operationDate,
+            l.valueDate || null,
+            l.label,
+            l.reference || null,
+            l.debit ?? null,
+            l.credit ?? null,
+            l.balance ?? null,
+            l.reconciliationStatus,
+            l.matchedChequeId || null,
+            l.reconciledAt || null,
+            l.reconciledBy || null,
+            l.confidenceScore ?? null,
+            l.extractedChequeNumber || null
+          ]
+        );
+      }
+    } catch (err) {
+      console.warn("Erreur saveBankStatement SQLite:", err);
+    }
+  }
+}
+
+export async function deleteBankStatement(statementId: string): Promise<void> {
+  // 1. LocalStorage
+  try {
+    const rawStmts = localStorage.getItem(BANK_STATEMENTS_STORAGE_KEY);
+    if (rawStmts) {
+      const stmts: BankStatementRecord[] = JSON.parse(rawStmts);
+      localStorage.setItem(BANK_STATEMENTS_STORAGE_KEY, JSON.stringify(stmts.filter((s) => s.id !== statementId)));
+    }
+    const rawLines = localStorage.getItem(BANK_STATEMENT_LINES_STORAGE_KEY);
+    if (rawLines) {
+      const lines: BankStatementLineRecord[] = JSON.parse(rawLines);
+      localStorage.setItem(BANK_STATEMENT_LINES_STORAGE_KEY, JSON.stringify(lines.filter((l) => l.statementId !== statementId)));
+    }
+  } catch {}
+
+  // 2. SQLite
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(`DELETE FROM bank_statement_lines WHERE statement_id = $1;`, [statementId]);
+      await db.execute(`DELETE FROM bank_statements WHERE id = $1;`, [statementId]);
+    } catch (err) {
+      console.warn("Erreur deleteBankStatement SQLite:", err);
+    }
+  }
+}
+
+export async function getBankStatementLines(
+  statementId?: string,
+  accountId?: string,
+  companyId?: string
+): Promise<BankStatementLineRecord[]> {
+  const compId = companyId || getActiveCompanyId();
+  const db = await getDatabase();
+
+  if (!db) {
+    try {
+      const raw = localStorage.getItem(BANK_STATEMENT_LINES_STORAGE_KEY);
+      if (!raw) return [];
+      const list: BankStatementLineRecord[] = JSON.parse(raw);
+      return list.filter((l) => {
+        if (statementId && l.statementId !== statementId) return false;
+        if (accountId && l.accountId !== accountId) return false;
+        if (compId && l.companyId !== compId) return false;
+        return true;
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  try {
+    let query = `
+      SELECT id, statement_id as statementId, account_id as accountId, company_id as companyId,
+             operation_date as operationDate, value_date as valueDate, label, reference,
+             debit, credit, balance, reconciliation_status as reconciliationStatus,
+             matched_cheque_id as matchedChequeId, reconciled_at as reconciledAt,
+             reconciled_by as reconciledBy, confidence_score as confidenceScore,
+             extracted_cheque_number as extractedChequeNumber
+      FROM bank_statement_lines
+      WHERE company_id = $1
+    `;
+    const params: any[] = [compId];
+
+    if (statementId) {
+      params.push(statementId);
+      query += ` AND statement_id = $${params.length}`;
+    }
+    if (accountId) {
+      params.push(accountId);
+      query += ` AND account_id = $${params.length}`;
+    }
+
+    query += ` ORDER BY operation_date DESC;`;
+
+    const rows = await db.select<BankStatementLineRecord[]>(query, params);
+    return rows || [];
+  } catch (err) {
+    console.warn("Erreur getBankStatementLines SQLite:", err);
+    return [];
+  }
+}
+
+/**
+ * Rapproche un chèque et une ligne de relevé bancaire (lettrage réciproque)
+ */
+export async function reconcileChequeWithStatementLine(
+  chequeId: string,
+  statementLineId: string
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  // 1. Mise à jour LocalStorage
+  try {
+    // Chèque
+    const rawCheques = localStorage.getItem(HISTORIQUE_STORAGE_KEY);
+    if (rawCheques) {
+      const cheques: ChequeRecord[] = JSON.parse(rawCheques);
+      const idx = cheques.findIndex((c) => c.id === chequeId);
+      if (idx >= 0) {
+        cheques[idx] = {
+          ...cheques[idx],
+          status: "encaisse",
+          cashedAt: now,
+          reconciledLineId: statementLineId,
+          reconciledAt: now,
+          isCashedDeclaredWithoutProof: false
+        };
+        localStorage.setItem(HISTORIQUE_STORAGE_KEY, JSON.stringify(cheques));
+      }
+    }
+
+    // Ligne relevé
+    const rawLines = localStorage.getItem(BANK_STATEMENT_LINES_STORAGE_KEY);
+    if (rawLines) {
+      const lines: BankStatementLineRecord[] = JSON.parse(rawLines);
+      const lIdx = lines.findIndex((l) => l.id === statementLineId);
+      if (lIdx >= 0) {
+        lines[lIdx] = {
+          ...lines[lIdx],
+          reconciliationStatus: "matched_exact",
+          matchedChequeId: chequeId,
+          reconciledAt: now
+        };
+        localStorage.setItem(BANK_STATEMENT_LINES_STORAGE_KEY, JSON.stringify(lines));
+      }
+    }
+  } catch (err) {
+    console.warn("Erreur rapprochement LocalStorage:", err);
+  }
+
+  // 2. Mise à jour SQLite
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(
+        `UPDATE cheques 
+         SET status = 'encaisse', cashed_at = $1, reconciled_line_id = $2, reconciled_at = $3, is_cashed_declared_without_proof = 0
+         WHERE id = $4;`,
+        [now, statementLineId, now, chequeId]
+      );
+
+      await db.execute(
+        `UPDATE bank_statement_lines 
+         SET reconciliation_status = 'matched_exact', matched_cheque_id = $1, reconciled_at = $2
+         WHERE id = $3;`,
+        [chequeId, now, statementLineId]
+      );
+    } catch (err) {
+      console.warn("Erreur rapprochement SQLite:", err);
+    }
+  }
+}
+
+/**
+ * Annule le rapprochement d'un chèque (délitrage)
+ */
+export async function unreconcileCheque(chequeId: string): Promise<void> {
+  // 1. LocalStorage
+  try {
+    let lineIdToReset: string | undefined;
+
+    const rawCheques = localStorage.getItem(HISTORIQUE_STORAGE_KEY);
+    if (rawCheques) {
+      const cheques: ChequeRecord[] = JSON.parse(rawCheques);
+      const idx = cheques.findIndex((c) => c.id === chequeId);
+      if (idx >= 0) {
+        lineIdToReset = cheques[idx].reconciledLineId;
+        cheques[idx] = {
+          ...cheques[idx],
+          reconciledLineId: undefined,
+          reconciledStatementId: undefined,
+          reconciledAt: undefined,
+          status: cheques[idx].printedAt ? "printed" : "pret"
+        };
+        localStorage.setItem(HISTORIQUE_STORAGE_KEY, JSON.stringify(cheques));
+      }
+    }
+
+    if (lineIdToReset) {
+      const rawLines = localStorage.getItem(BANK_STATEMENT_LINES_STORAGE_KEY);
+      if (rawLines) {
+        const lines: BankStatementLineRecord[] = JSON.parse(rawLines);
+        const lIdx = lines.findIndex((l) => l.id === lineIdToReset);
+        if (lIdx >= 0) {
+          lines[lIdx] = {
+            ...lines[lIdx],
+            reconciliationStatus: "unmatched",
+            matchedChequeId: undefined,
+            reconciledAt: undefined
+          };
+          localStorage.setItem(BANK_STATEMENT_LINES_STORAGE_KEY, JSON.stringify(lines));
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Erreur dé-rapprochement LocalStorage:", err);
+  }
+
+  // 2. SQLite
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(
+        `UPDATE bank_statement_lines 
+         SET reconciliation_status = 'unmatched', matched_cheque_id = NULL, reconciled_at = NULL 
+         WHERE matched_cheque_id = $1;`,
+        [chequeId]
+      );
+
+      await db.execute(
+        `UPDATE cheques 
+         SET reconciled_line_id = NULL, reconciled_statement_id = NULL, reconciled_at = NULL,
+             status = CASE WHEN printed_at IS NOT NULL THEN 'printed' ELSE 'pret' END
+         WHERE id = $1;`,
+        [chequeId]
+      );
+    } catch (err) {
+      console.warn("Erreur dé-rapprochement SQLite:", err);
+    }
+  }
+}
+
+/**
+ * Marque un chèque comme encaissé en mode déclaratif (sans preuve obligatoire)
+ */
+export async function markChequeAsCashedDeclared(chequeId: string): Promise<void> {
+  const now = new Date().toISOString();
+
+  try {
+    const rawCheques = localStorage.getItem(HISTORIQUE_STORAGE_KEY);
+    if (rawCheques) {
+      const cheques: ChequeRecord[] = JSON.parse(rawCheques);
+      const idx = cheques.findIndex((c) => c.id === chequeId);
+      if (idx >= 0) {
+        cheques[idx] = {
+          ...cheques[idx],
+          status: "encaisse",
+          cashedAt: now,
+          isCashedDeclaredWithoutProof: true
+        };
+        localStorage.setItem(HISTORIQUE_STORAGE_KEY, JSON.stringify(cheques));
+      }
+    }
+  } catch {}
+
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(
+        `UPDATE cheques 
+         SET status = 'encaisse', cashed_at = $1, is_cashed_declared_without_proof = 1 
+         WHERE id = $2;`,
+        [now, chequeId]
+      );
+    } catch (err) {
+      console.warn("Erreur markChequeAsCashedDeclared SQLite:", err);
+    }
+  }
+}
+

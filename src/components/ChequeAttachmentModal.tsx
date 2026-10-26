@@ -18,9 +18,12 @@ import {
   Layers,
   Package,
   Scan,
-  ShieldCheck
+  ShieldCheck,
+  Tag,
+  DollarSign,
+  AlertCircle
 } from "lucide-react";
-import type { ChequeAttachmentRecord, ChequeRecord } from "../types";
+import type { ChequeAttachmentRecord, ChequeRecord, AttachmentDocType } from "../types";
 import {
   getChequeAttachments,
   saveChequeAttachment,
@@ -35,6 +38,14 @@ interface ChequeAttachmentModalProps {
   onAttachmentCountChanged?: (count: number) => void;
 }
 
+const DOC_TYPE_LABELS: Record<AttachmentDocType, string> = {
+  invoice: "Facture",
+  purchase_order: "Bon de commande / BL",
+  bank_advice: "Avis d'opéré bancaire",
+  receipt: "Reçu de remise",
+  other: "Autre justificatif"
+};
+
 export const ChequeAttachmentModal: React.FC<ChequeAttachmentModalProps> = ({
   cheque,
   isOpen,
@@ -48,6 +59,13 @@ export const ChequeAttachmentModal: React.FC<ChequeAttachmentModalProps> = ({
   const [imageZoom, setImageZoom] = useState<number>(100);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [downloadToast, setDownloadToast] = useState<{ show: boolean; filename: string; path?: string } | null>(null);
+
+  // Nouveaux états de qualification documentaire
+  const [selectedDocType, setSelectedDocType] = useState<AttachmentDocType>("invoice");
+  const [docReference, setDocReference] = useState<string>("");
+  const [docAmount, setDocAmount] = useState<string>("");
+  const [isProofOfDebit, setIsProofOfDebit] = useState<boolean>(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadAttachments = useCallback(async () => {
@@ -92,6 +110,12 @@ export const ChequeAttachmentModal: React.FC<ChequeAttachmentModalProps> = ({
 
   if (!isOpen || !cheque) return null;
 
+  const handleToggleProofOfDebit = async (att: ChequeAttachmentRecord) => {
+    const updated: ChequeAttachmentRecord = { ...att, isProofOfDebit: !att.isProofOfDebit };
+    await saveChequeAttachment(updated);
+    await loadAttachments();
+  };
+
   // Traitement d'un fichier sélectionné ou déposé
   const processFile = (file: File) => {
     if (file.size > 15 * 1024 * 1024) {
@@ -104,9 +128,16 @@ export const ChequeAttachmentModal: React.FC<ChequeAttachmentModalProps> = ({
       const dataBase64 = event.target?.result as string;
       if (!dataBase64) return;
 
+      const parsedAmount = docAmount.trim() ? parseFloat(docAmount.replace(/[^\d.,]/g, "").replace(",", ".")) : undefined;
+
       const newAtt: ChequeAttachmentRecord = {
         id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         chequeId: cheque.id,
+        companyId: cheque.companyId,
+        docType: selectedDocType,
+        docReference: docReference.trim() || undefined,
+        docAmount: !isNaN(parsedAmount as number) ? parsedAmount : undefined,
+        isProofOfDebit: isProofOfDebit || selectedDocType === "bank_advice",
         fileName: file.name,
         fileSize: file.size,
         mimeType: file.type || "application/octet-stream",
@@ -116,6 +147,10 @@ export const ChequeAttachmentModal: React.FC<ChequeAttachmentModalProps> = ({
 
       await saveChequeAttachment(newAtt);
       await loadAttachments();
+      // Réinitialise les champs optionnels
+      setDocReference("");
+      setDocAmount("");
+      setIsProofOfDebit(false);
       // Ouvre automatiquement le dernier fichier déposé en aperçu
       setPreviewAttachment(newAtt);
       setImageZoom(100);
@@ -267,6 +302,68 @@ export const ChequeAttachmentModal: React.FC<ChequeAttachmentModalProps> = ({
 
           {/* 2. Corps du dialogue */}
           <div className="attachment-modal-body" style={{ padding: "18px 24px", overflowY: "auto", flex: 1 }}>
+            {/* Formulaire de qualification documentaire préalable */}
+            <div className="attachment-meta-form" style={{ background: "var(--bg-secondary)", padding: "12px 14px", borderRadius: "10px", border: "1px solid var(--border-color)", marginBottom: "14px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "10px", alignItems: "end" }}>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "4px" }}>
+                  Nature du document
+                </label>
+                <select
+                  value={selectedDocType}
+                  onChange={(e) => {
+                    const dt = e.target.value as AttachmentDocType;
+                    setSelectedDocType(dt);
+                    if (dt === "bank_advice") setIsProofOfDebit(true);
+                  }}
+                  style={{ width: "100%", padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#FFF", fontSize: "12px", color: "var(--text-primary)" }}
+                >
+                  <option value="invoice">Facture fournisseur</option>
+                  <option value="purchase_order">Bon de commande / BL</option>
+                  <option value="bank_advice">Avis d'opéré bancaire / Débit</option>
+                  <option value="receipt">Reçu de remise</option>
+                  <option value="other">Autre justificatif</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "4px" }}>
+                  N° de pièce / Réf (optionnel)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: FAC-2026-089"
+                  value={docReference}
+                  onChange={(e) => setDocReference(e.target.value)}
+                  style={{ width: "100%", padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#FFF", fontSize: "12px", color: "var(--text-primary)" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "4px" }}>
+                  Montant justificatif (DA)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: 50 000"
+                  value={docAmount}
+                  onChange={(e) => setDocAmount(e.target.value)}
+                  style={{ width: "100%", padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#FFF", fontSize: "12px", color: "var(--text-primary)" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", paddingBottom: "6px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", cursor: "pointer", color: isProofOfDebit ? "var(--emerald-dark)" : "var(--text-secondary)", fontWeight: isProofOfDebit ? 700 : 500 }}>
+                  <input
+                    type="checkbox"
+                    checked={isProofOfDebit}
+                    onChange={(e) => setIsProofOfDebit(e.target.checked)}
+                    style={{ accentColor: "var(--emerald-primary)", cursor: "pointer" }}
+                  />
+                  <span>Preuve de débit</span>
+                </label>
+              </div>
+            </div>
+
             {/* Zone de glisser-déposer / Téléversement */}
             <div
               className={`attachment-dropzone ${isDragging ? "is-dragging" : ""}`}
@@ -391,15 +488,46 @@ export const ChequeAttachmentModal: React.FC<ChequeAttachmentModalProps> = ({
                         </div>
 
                         <div className="attachment-card-info">
-                          <strong className="attachment-filename" title={att.fileName}>
-                            {att.fileName}
-                          </strong>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginBottom: "2px" }}>
+                            <strong className="attachment-filename" title={att.fileName}>
+                              {att.fileName}
+                            </strong>
+                            <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "rgba(172, 137, 70, 0.12)", color: "var(--gold-dark)", fontWeight: 600 }}>
+                              {DOC_TYPE_LABELS[att.docType || "other"]}
+                            </span>
+                            {att.docReference && (
+                              <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "#F1F5F9", color: "#475569", fontWeight: 600 }}>
+                                #{att.docReference}
+                              </span>
+                            )}
+                            {att.docAmount && (
+                              <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "#ECFDF5", color: "#065F46", fontWeight: 600 }}>
+                                {att.docAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
+                              </span>
+                            )}
+                            {att.isProofOfDebit && (
+                              <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "#DCFCE7", color: "#166534", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "3px" }} title="Ce document certifie formellement le débit bancaire">
+                                <ShieldCheck size={11} /> Preuve bancaire
+                              </span>
+                            )}
+                          </div>
                           <span className="attachment-filesize">
                             {formatFileSize(att.fileSize)} · Ajouté le {att.createdAt.split("T")[0]}
                           </span>
                         </div>
 
                         <div className="attachment-card-actions">
+                          {/* 0. Marquer comme preuve de débit */}
+                          <button
+                            type="button"
+                            className={`btn-att-action ${att.isProofOfDebit ? "active" : ""}`}
+                            onClick={() => handleToggleProofOfDebit(att)}
+                            title={att.isProofOfDebit ? "Retirer la qualification de preuve bancaire" : "Définir comme preuve formelle de débit bancaire"}
+                            style={{ color: att.isProofOfDebit ? "#166534" : "var(--text-muted)" }}
+                          >
+                            <ShieldCheck size={14} />
+                          </button>
+
                           {/* 1. Télécharger / Sauvegarder */}
                           <button
                             type="button"

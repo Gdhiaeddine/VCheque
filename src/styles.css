@@ -10083,3 +10083,34 @@ button {
   color: var(--text-secondary);
 }
 
+/* ==========================================================================
+   MODULE 1.7 : DOCUMENTS & RAPPROCHEMENT BANCAIRE
+   ========================================================================== */
+.cashed-choice-card:hover {
+  border-color: var(--gold-primary) !important;
+  background: #fdfbf7 !important;
+  box-shadow: 0 4px 12px rgba(172, 137, 70, 0.12);
+  transform: translateY(-1px);
+}
+
+.cheque-status-tag.encaisse.declarative {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  border-color: #fde68a !important;
+}
+
+.reconciliation-page-container table th {
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.reconciliation-page-container table tr:hover td {
+  background-color: #faf8f5;
+}
+
+.btn-filter-pill:hover {
+  opacity: 0.85;
+}
+
+

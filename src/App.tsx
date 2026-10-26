@@ -7,6 +7,7 @@ import { BankTemplateSelector } from "./components/BankTemplateSelector";
 import { BankTemplatesPage } from "./components/BankTemplatesPage";
 import { HistoryPage } from "./components/HistoryPage";
 import { BeneficiariesPage } from "./components/BeneficiariesPage";
+import { ReconciliationPage } from "./components/ReconciliationPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { CalibrationPanel } from "./components/CalibrationPanel";
 import { ActionBar } from "./components/ActionBar";
@@ -1279,6 +1280,7 @@ export default function App() {
             onClearHistory={handleClearHistory}
             onBackToHome={() => setActiveTab("home")}
             onOpenBatchImport={() => setShowBatchImportModal(true)}
+            onNavigateToReconciliation={() => setActiveTab("reconciliation")}
           />
         ) : activeTab === "beneficiaries" ? (
           <BeneficiariesPage
@@ -1286,6 +1288,12 @@ export default function App() {
             refreshTrigger={historyRefreshTrigger}
             onCreateChequeForBeneficiary={handleCreateChequeForBeneficiary}
             onBackToHome={() => setActiveTab("home")}
+          />
+        ) : activeTab === "reconciliation" ? (
+          <ReconciliationPage
+            activeCompanyId={activeCompany?.id}
+            onBackToHome={() => setActiveTab("home")}
+            onOpenCheckDetails={handleCloneToHome}
           />
         ) : activeTab === "settings" ? (
           <SettingsPage

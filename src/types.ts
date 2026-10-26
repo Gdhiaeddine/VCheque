@@ -118,6 +118,11 @@ export interface ChequeRecord {
   cancelledAt?: string; // Horodatage annulation
   deliveredAt?: string; // Horodatage remise
   cashedAt?: string; // Horodatage encaissement
+  reconciledLineId?: string; // ID de la ligne d'opération de relevé bancaire rapprochée
+  reconciledStatementId?: string; // ID du relevé bancaire associé
+  reconciledAt?: string; // Horodatage du rapprochement
+  proofAttachmentId?: string; // ID de la pièce jointe faisant office de preuve de débit
+  isCashedDeclaredWithoutProof?: boolean; // Vrai si marqué encaissé en mode déclaratif sans pièce/relevé
   isCrossed?: boolean;
   crossedWithText?: boolean;
   printCount?: number; // 0 = sauvegardé, 1 = imprimé, 2+ = réimprimé
@@ -186,15 +191,69 @@ export interface ChequeBookRecord {
   createdAt: string;
 }
 
+export type AttachmentDocType = "invoice" | "purchase_order" | "bank_advice" | "receipt" | "other";
+
 export interface ChequeAttachmentRecord {
   id: string;
   chequeId: string;
+  companyId?: string;
+  docType?: AttachmentDocType; // Type qualifié du document (Facture, BC, Avis de débit, etc.)
+  docReference?: string; // Référence du document (ex: "FACT-2026-089")
+  docAmount?: number; // Montant du document
+  isProofOfDebit?: boolean; // Vrai si ce document sert de preuve formelle de débit bancaire
   fileName: string;
   fileSize: number;
   mimeType: string;
   localPath?: string;
   dataBase64?: string;
   createdAt: string;
+}
+
+export type BankStatementFormat = "csv" | "excel" | "ofx";
+
+export interface BankStatementRecord {
+  id: string;
+  companyId: string;
+  accountId: string; // Compte bancaire émetteur rattaché
+  fileName: string;
+  fileFormat: BankStatementFormat;
+  statementDate: string; // Date de chargement
+  periodStart?: string;
+  periodEnd?: string;
+  startingBalance?: number;
+  endingBalance?: number;
+  totalDebit: number;
+  totalCredit: number;
+  linesCount: number;
+  reconciledCount: number;
+  createdAt: string;
+}
+
+export type ReconciliationStatus =
+  | "unmatched"
+  | "matched_exact"
+  | "matched_suggested"
+  | "reconciled_manual"
+  | "ignored";
+
+export interface BankStatementLineRecord {
+  id: string;
+  statementId: string;
+  accountId: string;
+  companyId: string;
+  operationDate: string; // YYYY-MM-DD
+  valueDate?: string; // YYYY-MM-DD
+  label: string; // Libellé brut de la ligne bancaire
+  reference?: string; // N° chèque ou référence opération extraite
+  debit?: number; // Montant débité (ex: 25000)
+  credit?: number; // Montant crédité
+  balance?: number; // Solde après opération
+  reconciliationStatus: ReconciliationStatus;
+  matchedChequeId?: string; // ID du chèque lié
+  reconciledAt?: string;
+  reconciledBy?: string;
+  confidenceScore?: number; // 0 à 100%
+  extractedChequeNumber?: string;
 }
 
 export type PrintPlacement =

@@ -5,13 +5,14 @@ import {
   History,
   Users,
   Settings,
+  CheckCheck,
   PanelLeftClose,
   PanelLeftOpen
 } from "lucide-react";
 import maqamEchahidSvg from "../assets/maqam-echahid.svg";
 import sidebarOrnamentsSvg from "../assets/sidebar-ornaments.svg";
 
-export type NavTab = "home" | "templates" | "history" | "beneficiaries" | "settings";
+export type NavTab = "home" | "templates" | "history" | "beneficiaries" | "reconciliation" | "settings";
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -31,6 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: "templates" as NavTab, label: "Modèles bancaires", icon: Landmark },
     { id: "history" as NavTab, label: "Historique", icon: History },
     { id: "beneficiaries" as NavTab, label: "Bénéficiaires", icon: Users },
+    { id: "reconciliation" as NavTab, label: "Rapprochement", icon: CheckCheck },
     { id: "settings" as NavTab, label: "Paramètres", icon: Settings }
   ];
 

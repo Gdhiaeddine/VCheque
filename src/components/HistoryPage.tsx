@@ -32,13 +32,15 @@ import {
   PlusCircle,
   Save,
   Paperclip,
-  CreditCard
+  CreditCard,
+  CheckCheck
 } from "lucide-react";
 import type { ChequeRecord, ChequeStatus, BankTemplate, PrintAttemptRecord, PrintAttemptStatus, ChequeAuditEvent, ChequeAuditEventType, BankAccountRecord } from "../types";
 import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
 import { exportChequeToPdf } from "../services/pdfExport";
 import { defaultBankTemplates } from "../banksData";
 import { ChequeAttachmentModal } from "./ChequeAttachmentModal";
+import { CashedProofValidationModal } from "./CashedProofValidationModal";
 import {
   getPaginatedCheques,
   getAllFilteredCheques,
@@ -51,6 +53,8 @@ import {
   clearPrintLogs,
   getChequeFullAuditTimeline,
   getBankAccounts,
+  getChequeAttachments,
+  markChequeAsCashedDeclared,
   getActiveCompanyId,
   type HistoryStats
 } from "../services/db";
@@ -65,6 +69,7 @@ interface HistoryPageProps {
   onClearHistory?: () => void;
   onBackToHome: () => void;
   onOpenBatchImport?: () => void;
+  onNavigateToReconciliation?: () => void;
   refreshTrigger?: number;
   activeCompanyId?: string;
 }
@@ -77,6 +82,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   onClearHistory,
   onBackToHome,
   onOpenBatchImport,
+  onNavigateToReconciliation,
   refreshTrigger = 0,
   activeCompanyId
 }) => {
@@ -117,6 +123,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
   // Modal des pièces jointes (factures / justificatifs)
   const [attachmentCheque, setAttachmentCheque] = useState<ChequeRecord | null>(null);
+  const [chequeForCashedProof, setChequeForCashedProof] = useState<ChequeRecord | null>(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -290,6 +297,21 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
       if (target) setChequeToCancel(target);
       return;
     }
+
+    if (newStatus === "encaisse") {
+      const target = records.find((r) => r.id === id);
+      if (target && !target.reconciledLineId) {
+        // Vérifier si une pièce jointe faisant office de preuve existe
+        const atts = await getChequeAttachments(id);
+        const hasDebitProof = atts.some((a) => a.isProofOfDebit);
+        if (!hasDebitProof) {
+          // Ouvre la modale d'avertissement / accompagnement non bloquante
+          setChequeForCashedProof(target);
+          return;
+        }
+      }
+    }
+
     await updateChequeStatus(id, newStatus);
     await fetchRecords();
   };
@@ -628,6 +650,18 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
               >
                 <FileSpreadsheet size={16} className="btn-action-icon text-emerald" />
                 <span>Importer un lot</span>
+              </button>
+            )}
+
+            {activeView === "cheques" && onNavigateToReconciliation && (
+              <button
+                type="button"
+                className="btn-action-card"
+                onClick={onNavigateToReconciliation}
+                title="Accéder au grand livre et au rapprochement bancaire"
+              >
+                <CheckCheck size={16} className="btn-action-icon text-gold" />
+                <span>Rapprochement bancaire</span>
               </button>
             )}
 
@@ -1094,10 +1128,22 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                           <span>Remis</span>
                         </>
                       ) : item.status === "encaisse" ? (
-                        <>
-                          <ShieldCheck size={13} />
-                          <span>Encaissé</span>
-                        </>
+                        item.reconciledLineId ? (
+                          <>
+                            <ShieldCheck size={13} style={{ color: "#166534" }} />
+                            <span>Encaissé (Lettré)</span>
+                          </>
+                        ) : item.isCashedDeclaredWithoutProof ? (
+                          <>
+                            <Clock size={13} style={{ color: "#D97706" }} />
+                            <span>Encaissé (Déclaratif)</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck size={13} />
+                            <span>Encaissé</span>
+                          </>
+                        )
                       ) : item.status === "annule" ? (
                         <>
                           <Ban size={13} />
@@ -1953,6 +1999,28 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modale d'accompagnement de preuve d'encaissement non bloquante */}
+      <CashedProofValidationModal
+        isOpen={Boolean(chequeForCashedProof)}
+        cheque={chequeForCashedProof}
+        onClose={() => setChequeForCashedProof(null)}
+        onConfirmWithoutProof={async () => {
+          if (chequeForCashedProof) {
+            await markChequeAsCashedDeclared(chequeForCashedProof.id);
+            setChequeForCashedProof(null);
+            await fetchRecords();
+          }
+        }}
+        onOpenAttachments={() => {
+          if (chequeForCashedProof) {
+            setAttachmentCheque(chequeForCashedProof);
+            setChequeForCashedProof(null);
+          }
+        }}
+        onOpenReconciliation={onNavigateToReconciliation}
+      />
+
       {/* Toast de confirmation de l'exportation dans le même style que le toast de nouveau chèque */}
       {exportToast && exportToast.show && (
         <div className="app-toast toast-success" role="status">

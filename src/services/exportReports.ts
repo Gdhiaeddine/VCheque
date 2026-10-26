@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { invoke } from "@tauri-apps/api/core";
-import type { ChequeRecord, ChequeStatus, BeneficiaryRecord } from "../types";
+import type { ChequeRecord, ChequeStatus, BeneficiaryRecord, BankAccountRecord, BankStatementLineRecord } from "../types";
 import { amountInFrenchWords } from "../moneyToWords";
 
 export const STATUS_LABELS: Record<ChequeStatus, string> = {
@@ -778,3 +778,206 @@ export async function exportBeneficiariesToExcel(
     bytes
   });
 }
+
+/**
+ * Export de l'état de rapprochement bancaire complet sous format Excel
+ */
+export async function exportBankReconciliationToExcel(
+  cheques: ChequeRecord[],
+  statementLines: BankStatementLineRecord[],
+  accounts: BankAccountRecord[]
+): Promise<ExportResult> {
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const filename = `Etat_Rapprochement_Bancaire_${timestamp}.xls`;
+
+  const accountMap = new Map<string, BankAccountRecord>();
+  accounts.forEach((a) => accountMap.set(a.id, a));
+
+  let html = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8" />
+      <style>
+        body { font-family: Calibri, Arial, sans-serif; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 25px; }
+        th { background-color: #10B981; color: #FFFFFF; font-weight: bold; border: 1px solid #059669; padding: 6px 10px; }
+        td { border: 1px solid #E2E8F0; padding: 5px 8px; font-size: 11pt; }
+        .title { font-size: 16pt; font-weight: bold; color: #065F46; }
+        .subtitle { font-size: 11pt; color: #64748B; margin-bottom: 15px; }
+        .reconciled { background-color: #ECFDF5; }
+        .circulation { background-color: #FFFBEB; }
+      </style>
+    </head>
+    <body>
+      <div class="title">État de Rapprochement Bancaire</div>
+      <div class="subtitle">Généré le ${new Date().toLocaleDateString("fr-FR")} · VCheque Studio Algérie</div>
+
+      <h3>1. Chèques émis & Statut de rapprochement</h3>
+      <table>
+        <tr>
+          <th>Date émission</th>
+          <th>N° Chèque</th>
+          <th>Bénéficiaire</th>
+          <th>Compte bancaire</th>
+          <th>Montant (DA)</th>
+          <th>Statut bancaire</th>
+          <th>Preuve / Rapprochement</th>
+        </tr>
+  `;
+
+  for (const c of cheques.filter((item) => item.status !== "annule")) {
+    const acc = c.accountId ? accountMap.get(c.accountId) : undefined;
+    const isReconciled = Boolean(c.reconciledLineId);
+    const isCashed = c.status === "encaisse";
+
+    html += `
+      <tr class="${isReconciled ? "reconciled" : "circulation"}">
+        <td>${c.date}</td>
+        <td style="mso-number-format:'\\@';">${c.chequeNumber || "—"}</td>
+        <td>${c.beneficiary}</td>
+        <td>${acc ? acc.label : c.bankName}</td>
+        <td style="text-align: right; mso-number-format:'#,##0.00';">${c.amount}</td>
+        <td>${isReconciled ? "Lettré / Encaissé" : isCashed ? (c.isCashedDeclaredWithoutProof ? "Encaissé (Déclaratif)" : "Encaissé") : "En circulation"}</td>
+        <td>${isReconciled ? "Rapproché sur relevé" : c.proofAttachmentId ? "Avis bancaire joint" : "—"}</td>
+      </tr>
+    `;
+  }
+
+  html += `
+      </table>
+
+      <h3>2. Débits sur relevés bancaires</h3>
+      <table>
+        <tr>
+          <th>Date opération</th>
+          <th>Date valeur</th>
+          <th>Libellé banque</th>
+          <th>N° Chèque extrait</th>
+          <th>Débit (DA)</th>
+          <th>Statut lettrage</th>
+        </tr>
+  `;
+
+  for (const l of statementLines.filter((line) => (line.debit || 0) > 0)) {
+    const isMatched = l.reconciliationStatus !== "unmatched";
+
+    html += `
+      <tr class="${isMatched ? "reconciled" : ""}">
+        <td>${l.operationDate}</td>
+        <td>${l.valueDate || l.operationDate}</td>
+        <td>${l.label}</td>
+        <td style="mso-number-format:'\\@';">${l.extractedChequeNumber || l.reference || "—"}</td>
+        <td style="text-align: right; mso-number-format:'#,##0.00';">${l.debit?.toFixed(2) || "0.00"}</td>
+        <td>${isMatched ? "Lettré" : "En attente"}</td>
+      </tr>
+    `;
+  }
+
+  html += `</table></body></html>`;
+
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(html);
+
+  return await saveExportFile({
+    defaultFilename: filename,
+    filterName: "Classeur Excel (*.xls)",
+    filterExt: "xls",
+    mimeType: "application/vnd.ms-excel",
+    bytes
+  });
+}
+
+/**
+ * Export du journal d'écritures comptables de trésorerie (Plan comptable SCF algérien)
+ */
+export async function exportAccountingJournalToExcel(
+  cheques: ChequeRecord[],
+  accounts: BankAccountRecord[]
+): Promise<ExportResult> {
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const filename = `Journal_Tresorerie_Banque_${timestamp}.xls`;
+
+  const accountMap = new Map<string, BankAccountRecord>();
+  accounts.forEach((a) => accountMap.set(a.id, a));
+
+  let html = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8" />
+      <style>
+        body { font-family: Calibri, Arial, sans-serif; }
+        table { border-collapse: collapse; width: 100%; }
+        th { background-color: #AC8946; color: #FFFFFF; font-weight: bold; border: 1px solid #8E6F32; padding: 6px 10px; }
+        td { border: 1px solid #CBD5E1; padding: 5px 8px; font-size: 11pt; }
+        .title { font-size: 16pt; font-weight: bold; color: #785E23; }
+      </style>
+    </head>
+    <body>
+      <div class="title">Journal des Décaissements / Trésorerie (Banque)</div>
+      <div style="color: #64748B; font-size: 11pt; margin-bottom: 15px;">Écritures comptables générées pour importation ERP / SCF Algérie</div>
+      <table>
+        <tr>
+          <th>Journal</th>
+          <th>Date écriture</th>
+          <th>N° Pièce / Chèque</th>
+          <th>Compte Général</th>
+          <th>Compte Tiers</th>
+          <th>Libellé écriture</th>
+          <th>Débit (DA)</th>
+          <th>Crédit (DA)</th>
+          <th>État Rapprochement</th>
+        </tr>
+  `;
+
+  for (const c of cheques.filter((item) => item.status !== "annule")) {
+    const acc = c.accountId ? accountMap.get(c.accountId) : undefined;
+    const bankCode = acc ? "512000" : "512";
+    const supplierCode = "401000";
+    const ref = c.chequeNumber ? `CHQ ${c.chequeNumber}` : "CHQ";
+    const isReconciled = Boolean(c.reconciledLineId);
+
+    // Ligne Débit Tiers (Fournisseur 401000)
+    html += `
+      <tr>
+        <td>BQ</td>
+        <td>${c.date}</td>
+        <td style="mso-number-format:'\\@';">${ref}</td>
+        <td>${supplierCode}</td>
+        <td>${c.beneficiary}</td>
+        <td>Règlement chèque - ${c.beneficiary}</td>
+        <td style="text-align: right; mso-number-format:'#,##0.00';">${c.amount}</td>
+        <td style="text-align: right;">0.00</td>
+        <td>${isReconciled ? "Lettré" : "En circulation"}</td>
+      </tr>
+    `;
+
+    // Ligne Crédit Banque (512xxx)
+    html += `
+      <tr>
+        <td>BQ</td>
+        <td>${c.date}</td>
+        <td style="mso-number-format:'\\@';">${ref}</td>
+        <td>${bankCode}</td>
+        <td>${acc ? acc.label : c.bankName}</td>
+        <td>Émission chèque - ${c.beneficiary}</td>
+        <td style="text-align: right;">0.00</td>
+        <td style="text-align: right; mso-number-format:'#,##0.00';">${c.amount}</td>
+        <td>${isReconciled ? "Lettré" : "En circulation"}</td>
+      </tr>
+    `;
+  }
+
+  html += `</table></body></html>`;
+
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(html);
+
+  return await saveExportFile({
+    defaultFilename: filename,
+    filterName: "Classeur Excel (*.xls)",
+    filterExt: "xls",
+    mimeType: "application/vnd.ms-excel",
+    bytes
+  });
+}
+
