@@ -48,7 +48,7 @@ import {
   getChequeFullAuditTimeline,
   type HistoryStats
 } from "../services/db";
-import { exportChequesToCsv, exportChequesToExcel, STATUS_LABELS } from "../services/exportReports";
+import { exportChequesToCsv, exportChequesToExcel, exportChequesToPdf as exportFilteredChequesToPdf, STATUS_LABELS } from "../services/exportReports";
 
 interface HistoryPageProps {
   history?: ChequeRecord[];
@@ -88,6 +88,15 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
   // Export state
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [showExportModal, setShowExportModal] = useState<boolean>(false);
+  const [selectedExportFormat, setSelectedExportFormat] = useState<"excel" | "pdf" | "csv">("excel");
+  const [customExportFilename, setCustomExportFilename] = useState<string>("");
+  const [exportToast, setExportToast] = useState<{
+    show: boolean;
+    filePath?: string;
+    filename?: string;
+    format?: string;
+  } | null>(null);
 
   // Modal d'annulation de chèque
   const [chequeToCancel, setChequeToCancel] = useState<ChequeRecord | null>(null);
@@ -237,47 +246,117 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     await fetchRecords();
   };
 
-  const handleExportCsv = async () => {
-    try {
-      setIsExporting(true);
-      const all = await getAllFilteredCheques({
-        searchQuery: debouncedSearch,
-        statusFilter,
-        bankFilter,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        chequeNumber: advChequeNumber || undefined,
-        reference: advReference || undefined,
-        beneficiaryQuery: advBeneficiary || undefined,
-        minAmount: advMinAmount ? parseFloat(advMinAmount) : undefined,
-        maxAmount: advMaxAmount ? parseFloat(advMaxAmount) : undefined
-      });
-      exportChequesToCsv(all);
-    } catch (err) {
-      console.error("Erreur export CSV:", err);
-    } finally {
-      setIsExporting(false);
-    }
+  const getActiveFilterParams = () => {
+    return {
+      searchQuery: searchQuery.trim() || debouncedSearch.trim() || undefined,
+      statusFilter,
+      bankFilter,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      chequeNumber: advChequeNumber.trim() || undefined,
+      reference: advReference.trim() || undefined,
+      beneficiaryQuery: advBeneficiary.trim() || undefined,
+      minAmount: advMinAmount ? parseFloat(advMinAmount) : undefined,
+      maxAmount: advMaxAmount ? parseFloat(advMaxAmount) : undefined
+    };
   };
 
-  const handleExportExcel = async () => {
+  const getActiveFilterSummary = () => {
+    const parts: string[] = [];
+    if (statusFilter && statusFilter !== "all") {
+      parts.push(`Statut : ${STATUS_LABELS[statusFilter] || statusFilter}`);
+    }
+    if (bankFilter && bankFilter !== "all") {
+      const tpl = templates.find((t) => t.id === bankFilter);
+      parts.push(`Banque : ${tpl ? tpl.shortName || tpl.name : bankFilter}`);
+    }
+    if (startDate && endDate) {
+      parts.push(`Période : du ${formatDate(startDate)} au ${formatDate(endDate)}`);
+    } else if (startDate) {
+      parts.push(`Depuis le : ${formatDate(startDate)}`);
+    } else if (endDate) {
+      parts.push(`Jusqu'au : ${formatDate(endDate)}`);
+    }
+    if (searchQuery.trim()) {
+      parts.push(`Recherche : "${searchQuery.trim()}"`);
+    }
+    if (advChequeNumber.trim()) {
+      parts.push(`N° Chèque : ${advChequeNumber.trim()}`);
+    }
+    if (advReference.trim()) {
+      parts.push(`Réf : ${advReference.trim()}`);
+    }
+    if (advBeneficiary.trim()) {
+      parts.push(`Bénéficiaire : ${advBeneficiary.trim()}`);
+    }
+    if (advMinAmount && advMaxAmount) {
+      parts.push(`Montant : ${advMinAmount} à ${advMaxAmount} DA`);
+    } else if (advMinAmount) {
+      parts.push(`Montant min : ${advMinAmount} DA`);
+    } else if (advMaxAmount) {
+      parts.push(`Montant max : ${advMaxAmount} DA`);
+    }
+
+    return parts.length > 0 ? parts.join(" | ") : "Tous les chèques (aucun filtre spécifique)";
+  };
+
+  const getExportFilename = (format: "excel" | "pdf" | "csv" | "xls") => {
+    const dateTag = new Date().toISOString().split("T")[0];
+    const chunks: string[] = ["cheques"];
+    if (bankFilter && bankFilter !== "all") {
+      chunks.push(bankFilter.toLowerCase().replace(/[^a-z0-9]/g, "-"));
+    }
+    if (statusFilter && statusFilter !== "all") {
+      chunks.push(statusFilter);
+    }
+    chunks.push(dateTag);
+    const ext = format === "excel" ? "xls" : format;
+    return `${chunks.join("-")}.${ext}`;
+  };
+
+  const handleExecuteExport = async () => {
     try {
       setIsExporting(true);
-      const all = await getAllFilteredCheques({
-        searchQuery: debouncedSearch,
-        statusFilter,
-        bankFilter,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        chequeNumber: advChequeNumber || undefined,
-        reference: advReference || undefined,
-        beneficiaryQuery: advBeneficiary || undefined,
-        minAmount: advMinAmount ? parseFloat(advMinAmount) : undefined,
-        maxAmount: advMaxAmount ? parseFloat(advMaxAmount) : undefined
-      });
-      exportChequesToExcel(all);
+      const all = await getAllFilteredCheques(getActiveFilterParams());
+      const filterSummary = getActiveFilterSummary();
+      const baseName = customExportFilename.trim() || getExportFilename(selectedExportFormat);
+
+      let result;
+      if (selectedExportFormat === "excel") {
+        const fn = baseName.toLowerCase().endsWith(".xls") ? baseName : `${baseName.replace(/\.[a-z0-9]+$/i, "")}.xls`;
+        result = await exportChequesToExcel(all, {
+          filterSummary,
+          customFilename: fn
+        });
+      } else if (selectedExportFormat === "pdf") {
+        const fn = baseName.toLowerCase().endsWith(".pdf") ? baseName : `${baseName.replace(/\.[a-z0-9]+$/i, "")}.pdf`;
+        result = await exportFilteredChequesToPdf(all, {
+          filterSummary,
+          customFilename: fn
+        });
+      } else {
+        const fn = baseName.toLowerCase().endsWith(".csv") ? baseName : `${baseName.replace(/\.[a-z0-9]+$/i, "")}.csv`;
+        result = await exportChequesToCsv(all, {
+          filterSummary,
+          customFilename: fn
+        });
+      }
+
+      if (result && !result.canceled) {
+        setShowExportModal(false);
+        setCustomExportFilename("");
+        setExportToast({
+          show: true,
+          filePath: result.filePath,
+          filename: result.filename || baseName,
+          format: selectedExportFormat.toUpperCase()
+        });
+        setTimeout(() => {
+          setExportToast(null);
+        }, 6000);
+      }
     } catch (err) {
-      console.error("Erreur export Excel:", err);
+      console.error("Erreur exportation:", err);
     } finally {
       setIsExporting(false);
     }
@@ -472,9 +551,6 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
               <span className="count-pill">
                 {activeView === "cheques" ? stats.totalCount : printLogs.length}
               </span>
-              <span className="db-badge" title="Stockage local SQLite">
-                SQLite
-              </span>
             </div>
             <p className="history-main-subtitle">
               {activeView === "cheques"
@@ -485,52 +561,43 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
           <div className="header-actions-group">
             {activeView === "cheques" && (
-              <>
-                <button
-                  type="button"
-                  className="btn-export-history"
-                  onClick={handleExportCsv}
-                  disabled={isExporting || totalCount === 0}
-                  title="Exporter tous les chèques filtrés en fichier CSV (encodage Excel UTF-8)"
-                >
-                  <FileSpreadsheet size={15} />
-                  <span>{isExporting ? "Exportation..." : "Exporter CSV"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  className="btn-export-history excel"
-                  onClick={handleExportExcel}
-                  disabled={isExporting || totalCount === 0}
-                  title="Exporter tous les chèques filtrés en classeur Excel (.xls)"
-                >
-                  <FileDown size={15} />
-                  <span>Exporter Excel</span>
-                </button>
-              </>
+              <button
+                type="button"
+                className="btn-action-luxury-green"
+                onClick={() => setShowExportModal(true)}
+                disabled={isExporting || totalCount === 0}
+                title={
+                  totalCount === 0
+                    ? "Aucun chèque correspondant aux filtres actifs à exporter"
+                    : "Exporter l'historique des chèques (Excel, PDF, CSV)"
+                }
+              >
+                <FileDown size={17} />
+                <span>Exporter</span>
+              </button>
             )}
 
             <button
               type="button"
-              className="btn-refresh-history"
+              className="btn-action-card"
               onClick={() => {
                 fetchRecords();
                 fetchPrintLogs();
               }}
               title="Actualiser la liste"
             >
-              <RotateCcw size={15} />
+              <RotateCcw size={16} className="btn-action-icon" />
               <span>Actualiser</span>
             </button>
 
             {activeView === "cheques" && stats.totalCount > 0 && (
               <button
                 type="button"
-                className="btn-clear-history"
+                className="btn-action-card btn-clear-danger"
                 onClick={handleClearAll}
                 title="Vider l'historique des chèques"
               >
-                <Trash2 size={15} />
+                <Trash2 size={16} className="btn-action-icon text-red" />
                 <span>Vider l'historique</span>
               </button>
             )}
@@ -538,11 +605,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
             {activeView === "audit" && printLogs.length > 0 && (
               <button
                 type="button"
-                className="btn-clear-history"
+                className="btn-action-card btn-clear-danger"
                 onClick={handleClearAuditLogs}
                 title="Vider le journal d'audit"
               >
-                <Trash2 size={15} />
+                <Trash2 size={16} className="btn-action-icon text-red" />
                 <span>Vider l'audit</span>
               </button>
             )}
@@ -1488,6 +1555,191 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         </div>
       )}
 
+
+      {/* 8. Modal de sélection du format d'exportation (Excel, PDF, CSV) */}
+      {showExportModal && (
+        <div
+          className="print-confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !isExporting && setShowExportModal(false)}
+        >
+          <div
+            className="print-confirm-modal export-selection-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="print-confirm-header">
+              <div className="print-confirm-icon-box">
+                <FileDown size={22} className="confirm-icon text-gold" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 className="confirm-title">Exporter l'historique des chèques</h3>
+                <p className="confirm-subtitle">
+                  {totalCount} chèque{totalCount > 1 ? "s" : ""} sélectionné{totalCount > 1 ? "s" : ""} selon les filtres actifs
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-modal-close"
+                onClick={() => !isExporting && setShowExportModal(false)}
+                title="Fermer"
+                disabled={isExporting}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="export-modal-body">
+              {/* Rappel des filtres actifs appliqués */}
+              <div className="export-filters-summary-card">
+                <div className="summary-card-header">
+                  <span className="summary-card-tag">Filtres actifs appliqués</span>
+                  <span className="summary-card-stats">
+                    {totalCount} chèque{totalCount > 1 ? "s" : ""} · {stats.totalAmountFormatted} DA
+                  </span>
+                </div>
+                <p className="summary-card-text">{getActiveFilterSummary()}</p>
+              </div>
+
+              {/* Sélection du format */}
+              <div className="export-format-selector-section">
+                <label className="export-section-label">Choisissez le format d'exportation :</label>
+
+                <div className="export-formats-grid">
+                  {/* 1. Format Excel */}
+                  <div
+                    className={`export-format-card excel ${selectedExportFormat === "excel" ? "active" : ""}`}
+                    onClick={() => setSelectedExportFormat("excel")}
+                  >
+                    <div className="format-card-radio">
+                      <input
+                        type="radio"
+                        name="exportFormat"
+                        value="excel"
+                        checked={selectedExportFormat === "excel"}
+                        onChange={() => setSelectedExportFormat("excel")}
+                      />
+                    </div>
+                    <div className="format-card-icon excel">
+                      <FileSpreadsheet size={22} />
+                    </div>
+                    <div className="format-card-info">
+                      <div className="format-card-title-row">
+                        <strong className="format-title">Classeur Excel (.xls)</strong>
+                        <span className="format-badge recommended">Recommandé</span>
+                      </div>
+                      <p className="format-desc">
+                        Tableau formaté avec en-têtes officiels, mise en valeur des chèques annulés et totalisation automatique. Idéal pour la comptabilité et l'analyse.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 2. Format PDF */}
+                  <div
+                    className={`export-format-card pdf ${selectedExportFormat === "pdf" ? "active" : ""}`}
+                    onClick={() => setSelectedExportFormat("pdf")}
+                  >
+                    <div className="format-card-radio">
+                      <input
+                        type="radio"
+                        name="exportFormat"
+                        value="pdf"
+                        checked={selectedExportFormat === "pdf"}
+                        onChange={() => setSelectedExportFormat("pdf")}
+                      />
+                    </div>
+                    <div className="format-card-icon pdf">
+                      <FileText size={22} />
+                    </div>
+                    <div className="format-card-info">
+                      <div className="format-card-title-row">
+                        <strong className="format-title">Rapport PDF (A4 Paysage)</strong>
+                        <span className="format-badge pdf">Prêt à imprimer</span>
+                      </div>
+                      <p className="format-desc">
+                        Document officiel vectoriel prêt à être imprimé ou archivé avec rappel des filtres, indicateurs KPI et pagination soignée.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 3. Format CSV */}
+                  <div
+                    className={`export-format-card csv ${selectedExportFormat === "csv" ? "active" : ""}`}
+                    onClick={() => setSelectedExportFormat("csv")}
+                  >
+                    <div className="format-card-radio">
+                      <input
+                        type="radio"
+                        name="exportFormat"
+                        value="csv"
+                        checked={selectedExportFormat === "csv"}
+                        onChange={() => setSelectedExportFormat("csv")}
+                      />
+                    </div>
+                    <div className="format-card-icon csv">
+                      <FileSpreadsheet size={22} />
+                    </div>
+                    <div className="format-card-info">
+                      <div className="format-card-title-row">
+                        <strong className="format-title">Fichier CSV (UTF-8 avec BOM)</strong>
+                        <span className="format-badge csv">Universel</span>
+                      </div>
+                      <p className="format-desc">
+                        Format brut standard compatible avec tous logiciels financiers, ERP et versions régionales de Microsoft Excel (accents & caractères arabes préservés).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Option de nom de fichier personnalisé */}
+              <div className="export-filename-section">
+                <label className="export-section-label" htmlFor="export-filename-input">
+                  Nom du fichier de sortie (optionnel) :
+                </label>
+                <div className="export-filename-input-wrapper">
+                  <input
+                    id="export-filename-input"
+                    type="text"
+                    className="export-filename-input"
+                    value={customExportFilename}
+                    onChange={(e) => setCustomExportFilename(e.target.value)}
+                    placeholder={getExportFilename(selectedExportFormat)}
+                  />
+                </div>
+                <span className="export-filename-hint">
+                  Laissez vide pour utiliser le nom généré automatiquement avec la date et les filtres.
+                </span>
+              </div>
+            </div>
+
+            <div className="print-confirm-actions">
+              <button
+                type="button"
+                className="btn-modal-secondary"
+                onClick={() => setShowExportModal(false)}
+                disabled={isExporting}
+              >
+                Annuler
+              </button>
+
+              <button
+                type="button"
+                className="btn-modal-primary"
+                onClick={handleExecuteExport}
+                disabled={isExporting || totalCount === 0}
+              >
+                <FileDown size={16} />
+                <span>
+                  {isExporting
+                    ? "Génération de l'export..."
+                    : `Télécharger l'export (${selectedExportFormat.toUpperCase()})`}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 7. Modal d'annulation de chèque avec motif obligatoire */}
       {chequeToCancel && (
         <div className="cancel-cheque-modal-overlay">
@@ -1582,6 +1834,38 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Toast de confirmation de l'exportation dans le même style que le toast de nouveau chèque */}
+      {exportToast && exportToast.show && (
+        <div className="app-toast toast-success" role="status">
+          <CheckCircle2 size={16} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+            <span>Export {exportToast.format} réussi !</span>
+            {exportToast.filePath && (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 400,
+                  color: "var(--text-secondary)",
+                  wordBreak: "break-all"
+                }}
+                title={exportToast.filePath}
+              >
+                {exportToast.filePath !== exportToast.filename
+                  ? `Emplacement : ${exportToast.filePath}`
+                  : exportToast.filename}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="toast-dismiss"
+            onClick={() => setExportToast(null)}
+            title="Fermer"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
     </div>

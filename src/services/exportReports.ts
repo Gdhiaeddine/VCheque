@@ -1,3 +1,5 @@
+import { jsPDF } from "jspdf";
+import { invoke } from "@tauri-apps/api/core";
 import type { ChequeRecord, ChequeStatus } from "../types";
 import { amountInFrenchWords } from "../moneyToWords";
 
@@ -10,6 +12,112 @@ export const STATUS_LABELS: Record<ChequeStatus, string> = {
   encaisse: "Encaissé",
   annule: "Annulé"
 };
+
+export interface ExportReportOptions {
+  customFilename?: string;
+  filterSummary?: string;
+}
+
+export interface ExportResult {
+  success: boolean;
+  canceled?: boolean;
+  filePath?: string;
+  filename?: string;
+  error?: string;
+}
+
+export interface SaveFileOptions {
+  defaultFilename: string;
+  filterName: string;
+  filterExt: string;
+  mimeType: string;
+  bytes: Uint8Array;
+}
+
+/**
+ * Boîte de dialogue universelle de choix de l'emplacement et de sauvegarde de fichier.
+ * Ouvre la boîte de dialogue native (Tauri / Windows Explorer ou File System Access API du navigateur)
+ * pour permettre à l'utilisateur de choisir exactement le dossier et le nom du fichier.
+ */
+export async function saveExportFile(options: SaveFileOptions): Promise<ExportResult> {
+  const { defaultFilename, filterName, filterExt, mimeType, bytes } = options;
+
+  // 1. Environnement Desktop Tauri : boîte de dialogue native OS "Enregistrer sous"
+  if (typeof window !== "undefined" && Boolean((window as any).__TAURI_INTERNALS__)) {
+    try {
+      const byteArray = Array.from(bytes);
+      const savedPath = await invoke<string | null>("save_file_dialog", {
+        defaultFilename,
+        filterName,
+        filterExt,
+        bytes: byteArray
+      });
+
+      if (savedPath) {
+        return { success: true, filePath: savedPath, filename: defaultFilename, canceled: false };
+      } else {
+        // L'utilisateur a cliqué sur "Annuler" dans le sélecteur de fichier
+        return { success: false, canceled: true };
+      }
+    } catch (tauriErr) {
+      console.warn("Échec save_file_dialog Tauri, tentative via save_pdf_dialog ou fallback:", tauriErr);
+      if (filterExt === "pdf") {
+        try {
+          const savedPath = await invoke<string | null>("save_pdf_dialog", {
+            defaultFilename,
+            bytes: Array.from(bytes)
+          });
+          if (savedPath) return { success: true, filePath: savedPath, filename: defaultFilename, canceled: false };
+          return { success: false, canceled: true };
+        } catch {}
+      }
+    }
+  }
+
+  // 2. File System Access API des navigateurs modernes (permet de choisir l'emplacement de sauvegarde)
+  if (typeof window !== "undefined" && "showSaveFilePicker" in window) {
+    try {
+      const handle = await (window as any).showSaveFilePicker({
+        suggestedName: defaultFilename,
+        types: [
+          {
+            description: filterName,
+            accept: {
+              [mimeType]: [`.${filterExt}`]
+            }
+          }
+        ]
+      });
+
+      const writable = await handle.createWritable();
+      await writable.write(bytes);
+      await writable.close();
+      return { success: true, filePath: defaultFilename, filename: defaultFilename, canceled: false };
+    } catch (pickerErr: any) {
+      if (pickerErr?.name === "AbortError") {
+        return { success: false, canceled: true };
+      }
+      console.warn("showSaveFilePicker échoué, fallback sur ancre HTML5:", pickerErr);
+    }
+  }
+
+  // 3. Fallback standard navigateur web HTML5 (Blob + téléchargement)
+  try {
+    const blob = new Blob([bytes], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = defaultFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    return { success: true, filePath: defaultFilename, filename: defaultFilename, canceled: false };
+  } catch (err) {
+    console.error("Erreur de sauvegarde finale:", err);
+    return { success: false, error: String(err) };
+  }
+}
 
 /**
  * Nettoie une chaîne de caractères pour inclusion dans un champ CSV
@@ -29,7 +137,8 @@ function escapeCsv(val: any): string {
 function formatDateFr(dateStr?: string): string {
   if (!dateStr) return "";
   try {
-    const parts = dateStr.split("T")[0].split("-");
+    const raw = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+    const parts = raw.split("-");
     if (parts.length === 3) {
       return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
@@ -40,9 +149,27 @@ function formatDateFr(dateStr?: string): string {
 }
 
 /**
- * Exporte une liste de chèques au format CSV (encodage UTF-8 avec BOM pour ouverture parfaite dans Excel)
+ * Formate un montant numérique pour l'export PDF avec espaces ASCII standard (0x20)
+ * Évite les espaces insécables étroits (U+202F) de toLocaleString("fr-FR") que jsPDF convertit en slashs "/"
  */
-export function exportChequesToCsv(records: ChequeRecord[], customFilename?: string): void {
+function formatPdfAmount(val: number): string {
+  if (isNaN(val)) return "0,00";
+  const fixed = val.toFixed(2);
+  const [intPart, decPart] = fixed.split(".");
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `${formattedInt},${decPart}`;
+}
+
+/**
+ * Exporte une liste de chèques au format CSV (encodage UTF-8 avec BOM pour ouverture parfaite dans Excel)
+ * Ouvre la boîte de dialogue native pour choisir l'emplacement de sauvegarde.
+ */
+export async function exportChequesToCsv(
+  records: ChequeRecord[],
+  options?: string | ExportReportOptions
+): Promise<ExportResult> {
+  const opt: ExportReportOptions = typeof options === "string" ? { customFilename: options } : (options || {});
+
   const headers = [
     "Date d'émission",
     "Numéro de chèque",
@@ -60,10 +187,23 @@ export function exportChequesToCsv(records: ChequeRecord[], customFilename?: str
     "Date d'enregistrement"
   ];
 
-  const rows: string[] = [headers.map(escapeCsv).join(";")];
+  const rows: string[] = [];
+
+  // En-tête informatif sur les filtres
+  if (opt.filterSummary) {
+    rows.push([`# FILTRES APPLIQUÉS : ${opt.filterSummary}`].join(";"));
+    rows.push([`# DATE D'EXPORT : ${new Date().toLocaleDateString("fr-FR")} ${new Date().toLocaleTimeString("fr-FR")}`].join(";"));
+  }
+
+  rows.push(headers.map(escapeCsv).join(";"));
+
+  let totalActive = 0;
 
   for (const item of records) {
     const rawNum = parseFloat((item.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+    if (item.status !== "annule") {
+      totalActive += rawNum;
+    }
     const formattedNum = rawNum.toFixed(2).replace(".", ",");
     const words = amountInFrenchWords(item.amount);
 
@@ -87,25 +227,49 @@ export function exportChequesToCsv(records: ChequeRecord[], customFilename?: str
     rows.push(row.map(escapeCsv).join(";"));
   }
 
+  // Ligne de total récapitulative
+  rows.push([
+    "TOTAL ACTIF (hors chèques annulés)",
+    "",
+    "",
+    `${records.length} chèque(s)`,
+    totalActive.toFixed(2).replace(".", ","),
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ].map(escapeCsv).join(";"));
+
   // BOM UTF-8 (\uFEFF) pour garantir que Microsoft Excel détecte immédiatement l'encodage UTF-8 (accents et arabe)
   const csvContent = "\uFEFF" + rows.join("\r\n");
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
+  const bytes = new TextEncoder().encode(csvContent);
   const dateTag = new Date().toISOString().split("T")[0];
-  a.download = customFilename || `cheques-historique-${dateTag}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const defaultFilename = opt.customFilename || `cheques-historique-${dateTag}.csv`;
+
+  return await saveExportFile({
+    defaultFilename,
+    filterName: "Fichier CSV (*.csv)",
+    filterExt: "csv",
+    mimeType: "text/csv;charset=utf-8;",
+    bytes
+  });
 }
 
 /**
  * Exporte une liste de chèques au format Excel Spreadsheet XML natif (.xls)
- * Compatible avec toutes les versions d'Excel, LibreOffice Calc et Google Sheets avec styles et totaux.
+ * Ouvre la boîte de dialogue native pour choisir l'emplacement de sauvegarde.
  */
-export function exportChequesToExcel(records: ChequeRecord[], customFilename?: string): void {
+export async function exportChequesToExcel(
+  records: ChequeRecord[],
+  options?: string | ExportReportOptions
+): Promise<ExportResult> {
+  const opt: ExportReportOptions = typeof options === "string" ? { customFilename: options } : (options || {});
+
   const sanitizeXml = (str: any): string => {
     if (str === null || str === undefined) return "";
     return String(str)
@@ -116,9 +280,32 @@ export function exportChequesToExcel(records: ChequeRecord[], customFilename?: s
       .replace(/'/g, "&apos;");
   };
 
+  let totalActive = 0;
+  for (const item of records) {
+    const rawNum = parseFloat((item.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+    if (item.status !== "annule") {
+      totalActive += rawNum;
+    }
+  }
+
   let rowsXml = "";
 
-  // En-têtes
+  // 1. Bloc d'en-tête informatif sur les filtres appliqués
+  rowsXml += `    <Row ss:Height="24">\n`;
+  rowsXml += `      <Cell ss:MergeAcross="10" ss:StyleID="TitleCell"><Data ss:Type="String">CHÈQUE STUDIO ALGÉRIE — ÉTAT RÉCAPITULATIF DES CHÈQUES</Data></Cell>\n`;
+  rowsXml += `    </Row>\n`;
+
+  rowsXml += `    <Row ss:Height="18">\n`;
+  rowsXml += `      <Cell ss:MergeAcross="10" ss:StyleID="SubtitleCell"><Data ss:Type="String">Filtres appliqués : ${sanitizeXml(opt.filterSummary || "Tous les chèques (aucun filtre spécifique)")}</Data></Cell>\n`;
+  rowsXml += `    </Row>\n`;
+
+  rowsXml += `    <Row ss:Height="18">\n`;
+  rowsXml += `      <Cell ss:MergeAcross="10" ss:StyleID="InfoCell"><Data ss:Type="String">Date d'exportation : ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} | Total chèques : ${records.length} | Montant actif total : ${totalActive.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA</Data></Cell>\n`;
+  rowsXml += `    </Row>\n`;
+
+  rowsXml += `    <Row ss:Height="8"/>\n`; // Ligne vide de séparation
+
+  // 2. En-têtes des colonnes du tableau
   const headers = [
     "Date",
     "N° Chèque",
@@ -133,22 +320,16 @@ export function exportChequesToExcel(records: ChequeRecord[], customFilename?: s
     "Enregistré le"
   ];
 
-  rowsXml += `    <Row ss:StyleID="HeaderRow">\n`;
+  rowsXml += `    <Row ss:StyleID="HeaderRow" ss:Height="22">\n`;
   for (const h of headers) {
     rowsXml += `      <Cell><Data ss:Type="String">${sanitizeXml(h)}</Data></Cell>\n`;
   }
   rowsXml += `    </Row>\n`;
 
-  let totalActive = 0;
-
-  // Lignes de données
+  // 3. Lignes de données
   for (const item of records) {
     const rawNum = parseFloat((item.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
-    if (item.status !== "annule") {
-      totalActive += rawNum;
-    }
     const words = amountInFrenchWords(item.amount);
-
     const styleId = item.status === "annule" ? "CancelledRow" : "DefaultRow";
 
     rowsXml += `    <Row ss:StyleID="${styleId}">\n`;
@@ -166,8 +347,8 @@ export function exportChequesToExcel(records: ChequeRecord[], customFilename?: s
     rowsXml += `    </Row>\n`;
   }
 
-  // Ligne de total
-  rowsXml += `    <Row ss:StyleID="TotalRow">\n`;
+  // 4. Ligne de totalisation
+  rowsXml += `    <Row ss:StyleID="TotalRow" ss:Height="24">\n`;
   rowsXml += `      <Cell><Data ss:Type="String">TOTAL ACTIF</Data></Cell>\n`;
   rowsXml += `      <Cell><Data ss:Type="String"></Data></Cell>\n`;
   rowsXml += `      <Cell><Data ss:Type="String"></Data></Cell>\n`;
@@ -192,6 +373,18 @@ export function exportChequesToExcel(records: ChequeRecord[], customFilename?: s
   <Style ss:ID="Default" ss:Name="Normal">
    <Alignment ss:Vertical="Center"/>
    <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#1E293B"/>
+  </Style>
+  <Style ss:ID="TitleCell">
+   <Alignment ss:Vertical="Center" ss:Horizontal="Left"/>
+   <Font ss:FontName="Calibri" ss:Size="14" ss:Bold="1" ss:Color="#2A241C"/>
+  </Style>
+  <Style ss:ID="SubtitleCell">
+   <Alignment ss:Vertical="Center" ss:Horizontal="Left"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Italic="1" ss:Color="#AC8946"/>
+  </Style>
+  <Style ss:ID="InfoCell">
+   <Alignment ss:Vertical="Center" ss:Horizontal="Left"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#64748B"/>
   </Style>
   <Style ss:ID="HeaderRow">
    <Alignment ss:Vertical="Center" ss:Horizontal="Center"/>
@@ -259,14 +452,216 @@ ${rowsXml}  </Table>
  </Worksheet>
 </Workbook>`;
 
-  const blob = new Blob([excelTemplate], { type: "application/vnd.ms-excel;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
+  const bytes = new TextEncoder().encode(excelTemplate);
   const dateTag = new Date().toISOString().split("T")[0];
-  a.download = customFilename || `cheques-historique-${dateTag}.xls`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const defaultFilename = opt.customFilename || `cheques-historique-${dateTag}.xls`;
+
+  return await saveExportFile({
+    defaultFilename,
+    filterName: "Classeur Excel (*.xls)",
+    filterExt: "xls",
+    mimeType: "application/vnd.ms-excel;charset=utf-8;",
+    bytes
+  });
+}
+
+/**
+ * Exporte un rapport complet de l'historique filtré au format PDF vectoriel (A4 Paysage)
+ * Ouvre la boîte de dialogue native pour choisir l'emplacement de sauvegarde.
+ */
+export async function exportChequesToPdf(
+  records: ChequeRecord[],
+  options?: string | ExportReportOptions
+): Promise<ExportResult> {
+  const opt: ExportReportOptions = typeof options === "string" ? { customFilename: options } : (options || {});
+
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth(); // 297mm
+  const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
+  const margin = 14;
+
+  let y = 15;
+
+  // En-tête Titre de l'application
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(42, 36, 28); // Dark gold
+  doc.text("CHÈQUE STUDIO ALGÉRIE — ÉTAT RÉCAPITULATIF DES CHÈQUES", margin, y);
+
+  // Date et heure d'édition
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(100, 116, 139);
+  const nowStr = `${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+  doc.text(`Édité le : ${nowStr}`, pageWidth - margin, y, { align: "right" });
+
+  y += 6;
+
+  // Sous-titre avec rappel explicite des filtres appliqués
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.5);
+  doc.setTextColor(172, 137, 70); // Accent gold
+  const filterSummaryText = `Filtres appliqués : ${opt.filterSummary || "Tous les chèques (aucun filtre spécifique)"}`;
+  doc.text(filterSummaryText, margin, y);
+
+  y += 5;
+
+  // Bloc résumé KPI
+  let totalActive = 0;
+  let cancelledCount = 0;
+  let printedCount = 0;
+
+  for (const r of records) {
+    const rawVal = parseFloat((r.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+    if (r.status === "annule") {
+      cancelledCount++;
+    } else {
+      totalActive += rawVal;
+    }
+    if (r.status === "printed") printedCount++;
+  }
+
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(margin, y, pageWidth - 2 * margin, 11, 2, 2, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(51, 65, 85);
+
+  doc.text(`Total chèques : ${records.length}`, margin + 5, y + 7.5);
+  doc.text(`Imprimés : ${printedCount}`, margin + 50, y + 7.5);
+  doc.text(`Annulés : ${cancelledCount}`, margin + 85, y + 7.5);
+  doc.text(
+    `Montant actif cumulé : ${formatPdfAmount(totalActive)} DA`,
+    margin + 120,
+    y + 7.5
+  );
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text("(Chèques annulés exclus du montant)", pageWidth - margin - 5, y + 7.5, { align: "right" });
+
+  y += 15;
+
+  // Définition des colonnes du tableau
+  const cols = [
+    { title: "Date", width: 22, align: "left" as const },
+    { title: "N° Chèque", width: 22, align: "left" as const },
+    { title: "Référence", width: 26, align: "left" as const },
+    { title: "Bénéficiaire", width: 64, align: "left" as const },
+    { title: "Montant (DZD)", width: 34, align: "right" as const },
+    { title: "Banque émettrice", width: 44, align: "left" as const },
+    { title: "Statut", width: 22, align: "center" as const },
+    { title: "Motif / Observation", width: 35, align: "left" as const }
+  ];
+
+  const drawTableHeader = (curY: number) => {
+    doc.setFillColor(42, 36, 28);
+    doc.rect(margin, curY, pageWidth - 2 * margin, 7.5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(255, 255, 255);
+
+    let curX = margin;
+    for (const c of cols) {
+      const textX =
+        c.align === "right" ? curX + c.width - 2 : c.align === "center" ? curX + c.width / 2 : curX + 2;
+      doc.text(c.title, textX, curY + 5.2, { align: c.align });
+      curX += c.width;
+    }
+  };
+
+  drawTableHeader(y);
+  y += 7.5;
+
+  // Lignes de données
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+
+  let rowIndex = 0;
+  for (const r of records) {
+    // Gestion de la pagination multi-pages
+    if (y > pageHeight - 18) {
+      doc.addPage();
+      y = 15;
+      drawTableHeader(y);
+      y += 7.5;
+    }
+
+    const isCancelled = r.status === "annule";
+    const rowHeight = 6.8;
+
+    // Fond alterné ou teinte rouge pour chèque annulé
+    if (isCancelled) {
+      doc.setFillColor(254, 242, 242);
+      doc.rect(margin, y, pageWidth - 2 * margin, rowHeight, "F");
+      doc.setTextColor(185, 28, 28);
+    } else if (rowIndex % 2 === 1) {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(margin, y, pageWidth - 2 * margin, rowHeight, "F");
+      doc.setTextColor(30, 41, 59);
+    } else {
+      doc.setTextColor(30, 41, 59);
+    }
+
+    // Bordure inférieure
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, y + rowHeight, pageWidth - margin, y + rowHeight);
+
+    let curX = margin;
+    const num = parseFloat((r.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+    const values = [
+      formatDateFr(r.date),
+      r.chequeNumber || "-",
+      r.reference || "-",
+      r.beneficiary || "-",
+      formatPdfAmount(num),
+      r.bankName || "-",
+      STATUS_LABELS[r.status] || r.status,
+      r.cancellationReason || "-"
+    ];
+
+    for (let i = 0; i < cols.length; i++) {
+      const c = cols[i];
+      const val = String(values[i]);
+      const textX =
+        c.align === "right" ? curX + c.width - 2 : c.align === "center" ? curX + c.width / 2 : curX + 2;
+
+      // Tronquer proprement si le texte dépasse la largeur de la cellule
+      const maxW = c.width - 4;
+      let textToDraw = val;
+      while (doc.getTextWidth(textToDraw) > maxW && textToDraw.length > 4) {
+        textToDraw = textToDraw.substring(0, textToDraw.length - 4) + "...";
+      }
+      doc.text(textToDraw, textX, y + 4.7, { align: c.align });
+      curX += c.width;
+    }
+
+    y += rowHeight;
+    rowIndex++;
+  }
+
+  // Pied de page sur l'ensemble des pages générées
+  const totalPagesCount = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPagesCount; i++) {
+    doc.setPage(i);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Chèque Studio Algérie — Document de gestion interne confidentiel`, margin, pageHeight - 6);
+    doc.text(`Page ${i} sur ${totalPagesCount}`, pageWidth - margin, pageHeight - 6, { align: "right" });
+  }
+
+  const bytes = new Uint8Array(doc.output("arraybuffer"));
+  const dateTag = new Date().toISOString().split("T")[0];
+  const defaultFilename = opt.customFilename || `rapport-cheques-${dateTag}.pdf`;
+
+  return await saveExportFile({
+    defaultFilename,
+    filterName: "Document PDF (*.pdf)",
+    filterExt: "pdf",
+    mimeType: "application/pdf",
+    bytes
+  });
 }

@@ -48,6 +48,35 @@ fn open_templates_config_folder(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn save_file_dialog(
+    default_filename: String,
+    filter_name: String,
+    filter_ext: String,
+    bytes: Vec<u8>,
+) -> Result<Option<String>, String> {
+    let dialog = rfd::FileDialog::new()
+        .set_file_name(&default_filename)
+        .add_filter(&filter_name, &[&filter_ext]);
+
+    if let Some(path) = dialog.save_file() {
+        fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+        let path_str = path.to_string_lossy().to_string();
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::process::Command;
+            let _ = Command::new("explorer")
+                .arg(format!("/select,{}", path_str))
+                .spawn();
+        }
+
+        Ok(Some(path_str))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
 fn save_pdf_dialog(default_filename: String, bytes: Vec<u8>) -> Result<Option<String>, String> {
     let dialog = rfd::FileDialog::new()
         .set_file_name(&default_filename)
@@ -107,6 +136,7 @@ pub fn run() {
             load_templates_config,
             save_templates_config,
             open_templates_config_folder,
+            save_file_dialog,
             save_pdf_dialog,
             save_pdf_to_downloads
         ])

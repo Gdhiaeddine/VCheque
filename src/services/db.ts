@@ -366,18 +366,18 @@ function buildChequesWhereClause(params: GetChequesParams): { whereClause: strin
 
   // Filtre de banque
   if (bankFilter && bankFilter !== "all") {
-    conditions.push("(bank_template_id = ? OR bank_name = ?)");
-    queryParams.push(bankFilter, bankFilter);
+    conditions.push("(bank_template_id = ? OR LOWER(bank_name) = ? OR LOWER(bank_name) LIKE ?)");
+    queryParams.push(bankFilter, bankFilter.toLowerCase(), `%${bankFilter.toLowerCase()}%`);
   }
 
   // Filtre période début / fin
   if (startDate) {
-    conditions.push("date >= ?");
-    queryParams.push(startDate);
+    conditions.push("(date >= ? OR (substr(date, 7, 4) || '-' || substr(date, 4, 2) || '-' || substr(date, 1, 2)) >= ?)");
+    queryParams.push(startDate, startDate);
   }
   if (endDate) {
-    conditions.push("date <= ?");
-    queryParams.push(endDate);
+    conditions.push("(date <= ? OR (substr(date, 7, 4) || '-' || substr(date, 4, 2) || '-' || substr(date, 1, 2)) <= ?)");
+    queryParams.push(endDate, endDate);
   }
 
   // Filtres avancés multi-critères
@@ -1108,12 +1108,18 @@ function filterLocalCheques(all: ChequeRecord[], params: Omit<GetChequesParams, 
 
     // Banque
     if (bankFilter && bankFilter !== "all") {
-      if (item.bankTemplateId !== bankFilter && item.bankName !== bankFilter) return false;
+      const bf = bankFilter.toLowerCase();
+      const matchId = (item.bankTemplateId || "").toLowerCase() === bf;
+      const matchName = (item.bankName || "").toLowerCase().includes(bf);
+      if (!matchId && !matchName) return false;
     }
 
     // Période
-    if (startDate && item.date < startDate) return false;
-    if (endDate && item.date > endDate) return false;
+    const itemDate = item.date && item.date.includes("/") 
+      ? item.date.split("/").reverse().join("-") 
+      : (item.date ? item.date.split("T")[0] : "");
+    if (startDate && itemDate && itemDate < startDate) return false;
+    if (endDate && itemDate && itemDate > endDate) return false;
 
     // Filtres avancés
     if (chequeNumber?.trim() && !(item.chequeNumber || "").includes(chequeNumber.trim())) return false;
