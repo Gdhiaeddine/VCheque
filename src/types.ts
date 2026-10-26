@@ -34,6 +34,7 @@ export interface ChequeData {
   place: string;
   date: string;
   chequeNumber?: string;
+  showChequeNumber?: boolean;
   isCrossed: boolean; // Chèque barré
   crossedWithText?: boolean; // Mention "Non endossable" entre les barres
 }
@@ -65,6 +66,7 @@ export interface ChequeRecord {
   place: string;
   date: string;
   chequeNumber?: string;
+  showChequeNumber?: boolean;
   bankTemplateId: string;
   bankName: string;
   status: ChequeStatus;
@@ -137,5 +139,6 @@ export interface AppSettings {
   defaultPlace: string;
   defaultIsCrossed: boolean;
   defaultCrossedWithText?: boolean;
+  defaultShowChequeNumber: boolean;
   defaultTemplateId?: string;
 }

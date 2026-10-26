@@ -61,6 +61,8 @@ export default function App() {
   const [date, setDate] = useState<string>("2026-10-19");
   const [isCrossed, setIsCrossed] = useState<boolean>(() => loadAppSettings().defaultIsCrossed !== false);
   const [crossedWithText, setCrossedWithText] = useState<boolean>(() => loadAppSettings().defaultCrossedWithText !== false);
+  const [showChequeNumber, setShowChequeNumber] = useState<boolean>(() => loadAppSettings().defaultShowChequeNumber ?? false);
+  const [chequeNumber, setChequeNumber] = useState<string>("0048291");
 
   // 2. Templates & Calibration State
   const [templates, setTemplates] = useState<BankTemplate[]>(() => {
@@ -358,9 +360,11 @@ export default function App() {
       saved.date !== date ||
       saved.bankTemplateId !== currentTemplate.id ||
       (saved.isCrossed !== false) !== isCrossed ||
-      (saved.crossedWithText !== false) !== crossedWithText
+      (saved.crossedWithText !== false) !== crossedWithText ||
+      Boolean(saved.showChequeNumber) !== showChequeNumber ||
+      (showChequeNumber && (saved.chequeNumber || "") !== (chequeNumber || ""))
     );
-  }, [activeChequeId, history, amount, beneficiary, place, date, currentTemplate.id, isCrossed, crossedWithText]);
+  }, [activeChequeId, history, amount, beneficiary, place, date, currentTemplate.id, isCrossed, crossedWithText, showChequeNumber, chequeNumber]);
 
   // Réinitialisation effective vers un nouveau chèque vierge
   const executeNewCheque = () => {
@@ -370,6 +374,8 @@ export default function App() {
     setDate(new Date().toISOString().split("T")[0]);
     setIsCrossed(appSettings.defaultIsCrossed !== false);
     setCrossedWithText(appSettings.defaultCrossedWithText !== false);
+    setShowChequeNumber(appSettings.defaultShowChequeNumber ?? false);
+    setChequeNumber("0048291");
     setActiveChequeId(null);
     setActiveChequeStatus(null);
     setActivePrintCount(0);
@@ -409,6 +415,8 @@ export default function App() {
       printCount: existingRecord?.printCount ?? activePrintCount,
       isCrossed,
       crossedWithText,
+      showChequeNumber,
+      chequeNumber: showChequeNumber ? (chequeNumber.trim() || undefined) : undefined,
       createdAt: existingRecord?.createdAt || now,
       updatedAt: now,
       printedAt: existingRecord?.printedAt,
@@ -489,6 +497,8 @@ export default function App() {
         date: date || new Date().toISOString().split("T")[0],
         isCrossed,
         crossedWithText,
+        showChequeNumber,
+        chequeNumber: showChequeNumber ? (chequeNumber.trim() || undefined) : undefined,
         printSettings,
         includeBackground,
         filename: customFilename
@@ -588,6 +598,8 @@ export default function App() {
         printCount: activePrintCount || 0,
         isCrossed,
         crossedWithText,
+        showChequeNumber,
+        chequeNumber: showChequeNumber ? (chequeNumber.trim() || undefined) : undefined,
         createdAt: now,
         updatedAt: now
       };
@@ -643,6 +655,8 @@ export default function App() {
       printCount: copyNumber,
       isCrossed,
       crossedWithText,
+      showChequeNumber,
+      chequeNumber: showChequeNumber ? (chequeNumber.trim() || undefined) : undefined,
       createdAt: existingRecord?.createdAt || now,
       updatedAt: now,
       printedAt: existingRecord?.printedAt || now,
@@ -695,6 +709,12 @@ export default function App() {
     setDate(record.date);
     setIsCrossed(record.isCrossed !== false);
     setCrossedWithText(record.crossedWithText !== false);
+    if (record.chequeNumber) {
+      setChequeNumber(record.chequeNumber);
+      setShowChequeNumber(true);
+    } else {
+      setShowChequeNumber(record.showChequeNumber ?? false);
+    }
     if (templates.some((t) => t.id === record.bankTemplateId)) {
       setSelectedTemplateId(record.bankTemplateId);
     }
@@ -715,6 +735,12 @@ export default function App() {
     setDate(record.date);
     setIsCrossed(record.isCrossed !== false);
     setCrossedWithText(record.crossedWithText !== false);
+    if (record.chequeNumber) {
+      setChequeNumber(record.chequeNumber);
+      setShowChequeNumber(true);
+    } else {
+      setShowChequeNumber(record.showChequeNumber ?? false);
+    }
     if (templates.some((t) => t.id === record.bankTemplateId)) {
       setSelectedTemplateId(record.bankTemplateId);
     }
@@ -923,6 +949,10 @@ export default function App() {
                   onChangeIsCrossed={setIsCrossed}
                   crossedWithText={crossedWithText}
                   onChangeCrossedWithText={setCrossedWithText}
+                  showChequeNumber={showChequeNumber}
+                  onChangeShowChequeNumber={setShowChequeNumber}
+                  chequeNumber={chequeNumber}
+                  onChangeChequeNumber={setChequeNumber}
                   onSubmit={handleSubmitForm}
                 />
 
@@ -936,6 +966,8 @@ export default function App() {
                   date={date}
                   isCrossed={isCrossed}
                   crossedWithText={crossedWithText}
+                  showChequeNumber={showChequeNumber}
+                  chequeNumber={chequeNumber}
                   formattedNumeric={formattedNumeric}
                   activeField={activeField}
                   onSelectField={setActiveField}
@@ -1109,6 +1141,8 @@ export default function App() {
         date={date}
         isCrossed={isCrossed}
         crossedWithText={crossedWithText}
+        showChequeNumber={showChequeNumber}
+        chequeNumber={chequeNumber}
         formattedNumeric={formattedNumeric}
         isReprint={activeChequeStatus === "printed" || activePrintCount > 0}
         printCount={activePrintCount}
@@ -1500,6 +1534,20 @@ export default function App() {
               >
                 {date ? date.split("-").reverse().join("/") : ""}
               </div>
+
+              {showChequeNumber && chequeNumber && currentTemplate.positions.chequeNumber && (
+                <div
+                  className="print-field"
+                  style={{
+                    left: `${currentTemplate.positions.chequeNumber.x}mm`,
+                    top: `${currentTemplate.positions.chequeNumber.y}mm`,
+                    fontSize: `${currentTemplate.positions.chequeNumber.size}mm`,
+                    textAlign: currentTemplate.positions.chequeNumber.align || "left"
+                  }}
+                >
+                  {chequeNumber}
+                </div>
+              )}
             </div>
           </div>
         );

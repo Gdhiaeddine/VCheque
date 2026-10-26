@@ -15,6 +15,8 @@ export interface ExportPdfOptions {
   date: string;
   isCrossed?: boolean;
   crossedWithText?: boolean;
+  showChequeNumber?: boolean;
+  chequeNumber?: string;
   printSettings?: PrintSettings;
   includeBackground?: boolean;
   filename?: string;
@@ -97,6 +99,8 @@ export async function exportChequeToPdf(options: ExportPdfOptions): Promise<Expo
     date,
     isCrossed = true,
     crossedWithText = true,
+    showChequeNumber = false,
+    chequeNumber,
     printSettings,
     includeBackground = false,
     filename
@@ -252,6 +256,16 @@ export async function exportChequeToPdf(options: ExportPdfOptions): Promise<Expo
     const formattedDate = date.includes("-") ? date.split("-").reverse().join("/") : date;
     doc.setFontSize(mmToPt(pos.size));
     doc.text(formattedDate, originX + pos.x, originY + pos.y, {
+      align: pos.align || "left",
+      baseline: "middle"
+    });
+  }
+
+  // 8 bis. Numéro de chèque (si activé)
+  if (showChequeNumber && chequeNumber && template.positions.chequeNumber) {
+    const pos = template.positions.chequeNumber;
+    doc.setFontSize(mmToPt(pos.size));
+    doc.text(chequeNumber, originX + pos.x, originY + pos.y, {
       align: pos.align || "left",
       baseline: "middle"
     });

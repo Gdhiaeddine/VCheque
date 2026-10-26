@@ -10,6 +10,7 @@ import {
   FileText,
   Move,
   Eye,
+  EyeOff,
   Info,
   ArrowLeft,
   Sparkles,
@@ -63,6 +64,7 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
   // State: Template selection / edit mode
   const [editingTemplate, setEditingTemplate] = useState<BankTemplate | null>(null);
   const [activeEditorField, setActiveEditorField] = useState<FieldKey>("words");
+  const [previewChequeNumber, setPreviewChequeNumber] = useState<boolean>(true);
   const [testAmountWords, setTestAmountWords] = useState<string>("Cent vingt-cinq mille quatre cent cinquante dinars algériens et soixante-quinze centimes");
   const [draggingField, setDraggingField] = useState<FieldKey | null>(null);
   const [configFilePath, setConfigFilePath] = useState<string>("");
@@ -661,7 +663,12 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
                         onClick={() => setActiveEditorField(key)}
                       >
                         <div className="field-setting-header">
-                          <strong>{FIELD_LABELS[key]}</strong>
+                          <div className="field-title-badge-group">
+                            <strong>{FIELD_LABELS[key]}</strong>
+                            {key === "chequeNumber" && (
+                              <span className="field-optional-badge">Optionnel · Masqué par défaut</span>
+                            )}
+                          </div>
                           <span className="coord-summary-pill">
                             X: {pos.x} mm | Y: {pos.y} mm
                           </span>
@@ -714,9 +721,20 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
                     <h3 className="preview-title">Aperçu & Calibrage visuel</h3>
                     <p className="preview-sub">Glissez-déposez directement les champs sur le chèque.</p>
                   </div>
-                  <span className="active-field-badge">
-                    Champ actif : <strong>{FIELD_LABELS[activeEditorField]}</strong>
-                  </span>
+                  <div className="preview-header-actions-group">
+                    <button
+                      type="button"
+                      className={`btn-preview-cheque-num-toggle ${previewChequeNumber ? "active" : ""}`}
+                      onClick={() => setPreviewChequeNumber((prev) => !prev)}
+                      title={previewChequeNumber ? "Masquer l'aperçu du N° de chèque" : "Afficher l'aperçu du N° de chèque"}
+                    >
+                      {previewChequeNumber ? <Eye size={13} /> : <EyeOff size={13} />}
+                      <span>N° chèque : {previewChequeNumber ? "Visible" : "Masqué"}</span>
+                    </button>
+                    <span className="active-field-badge">
+                      Champ actif : <strong>{FIELD_LABELS[activeEditorField]}</strong>
+                    </span>
+                  </div>
                 </div>
 
                 <div
@@ -753,7 +771,12 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
                       if (key === "beneficiary") displayText = "Entreprise Exemple SARL";
                       if (key === "place") displayText = "Alger";
                       if (key === "date") displayText = "19/10/2026";
-                      if (key === "chequeNumber") displayText = "N° 0048291";
+                      if (key === "chequeNumber") {
+                        displayText = "N° 0048291";
+                        if (!previewChequeNumber && !isSelected) {
+                          return null;
+                        }
+                      }
 
                       return (
                         <div

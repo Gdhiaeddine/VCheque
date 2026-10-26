@@ -108,6 +108,9 @@ export async function getDatabase(): Promise<Database | null> {
     try {
       await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN last_printed_at TEXT;`);
     } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN show_cheque_number INTEGER DEFAULT 0;`);
+    } catch {}
 
     // 2. Index pour accélérer le tri et la pagination
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_created_at ON cheques(created_at DESC);`);
@@ -364,6 +367,7 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
         bank_template_id as bankTemplateId, bank_name as bankName, status,
         COALESCE(is_crossed, 1) = 1 as isCrossed,
         COALESCE(crossed_with_text, 1) = 1 as crossedWithText,
+        COALESCE(show_cheque_number, 0) = 1 as showChequeNumber,
         COALESCE(print_count, CASE WHEN status = 'printed' THEN 1 ELSE 0 END) as printCount,
         created_at as createdAt, updated_at as updatedAt, printed_at as printedAt,
         last_printed_at as lastPrintedAt
@@ -406,8 +410,9 @@ export async function saveChequeRecord(record: ChequeRecord): Promise<void> {
   await db.execute(
     `INSERT OR REPLACE INTO cheques (
       id, amount, amount_numeric, beneficiary, place, date, cheque_number,
-      bank_template_id, bank_name, status, is_crossed, crossed_with_text, print_count, created_at, updated_at, printed_at, last_printed_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);`,
+      bank_template_id, bank_name, status, is_crossed, crossed_with_text,
+      show_cheque_number, print_count, created_at, updated_at, printed_at, last_printed_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);`,
     [
       record.id,
       record.amount,
@@ -421,6 +426,7 @@ export async function saveChequeRecord(record: ChequeRecord): Promise<void> {
       record.status,
       record.isCrossed !== false ? 1 : 0,
       record.crossedWithText !== false ? 1 : 0,
+      record.showChequeNumber ? 1 : 0,
       count,
       record.createdAt,
       record.updatedAt || null,
@@ -456,6 +462,7 @@ export async function findDuplicateCheque(params: {
           id, amount, amount_numeric, beneficiary, place, date, cheque_number as chequeNumber,
           bank_template_id as bankTemplateId, bank_name as bankName, status,
           COALESCE(is_crossed, 1) = 1 as isCrossed,
+          COALESCE(show_cheque_number, 0) = 1 as showChequeNumber,
           COALESCE(print_count, CASE WHEN status = 'printed' THEN 1 ELSE 0 END) as printCount,
           created_at as createdAt, updated_at as updatedAt, printed_at as printedAt,
           last_printed_at as lastPrintedAt

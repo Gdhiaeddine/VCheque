@@ -630,6 +630,22 @@ button {
   align-items: start;
 }
 
+.form-row-middle.form-row-two-cols {
+  grid-template-columns: 1fr 1fr;
+}
+
+.form-row-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.cheque-number-input-row {
+  margin-top: 6px;
+  animation: fadeIn 150ms ease-out;
+}
+
 .form-group {
   margin-bottom: 0;
 }
@@ -3122,6 +3138,59 @@ button {
   align-items: center;
   justify-content: space-between;
   font-size: 11.5px;
+  gap: 8px;
+}
+
+.field-title-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.field-optional-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: 1px 6px;
+  border-radius: 10px;
+  letter-spacing: 0.02em;
+}
+
+.preview-header-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-preview-cheque-num-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-preview-cheque-num-toggle:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--gold-border);
+}
+
+.btn-preview-cheque-num-toggle.active {
+  background: var(--gold-light, #FAF5EB);
+  color: var(--gold-dark);
+  border-color: var(--gold-primary);
 }
 
 .coord-summary-pill {
@@ -4400,6 +4469,17 @@ button {
   letter-spacing: 0.3px;
 }
 
+.mini-cheque-num-tag {
+  font-size: 8.5px;
+  font-weight: 700;
+  color: var(--gold-dark);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--gold-border);
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+}
+
 /* ==========================================================================
    PAGE PARAMÈTRES & PRÉFÉRENCES (SETTINGS)
    ========================================================================== */
@@ -4947,7 +5027,8 @@ button {
 
 @media (max-width: 760px) {
   .form-row-top,
-  .form-row-middle {
+  .form-row-middle,
+  .form-row-options {
     grid-template-columns: 1fr;
     gap: 12px;
   }

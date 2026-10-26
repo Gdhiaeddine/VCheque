@@ -12,6 +12,8 @@ interface ChequePreviewProps {
   date: string;
   isCrossed?: boolean;
   crossedWithText?: boolean;
+  showChequeNumber?: boolean;
+  chequeNumber?: string;
   formattedNumeric?: string;
   activeField: FieldKey | null;
   onSelectField: (key: FieldKey | null) => void;
@@ -31,6 +33,8 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
   date,
   isCrossed = true,
   crossedWithText = true,
+  showChequeNumber = false,
+  chequeNumber,
   formattedNumeric,
   activeField,
   onSelectField,
@@ -376,6 +380,27 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
               </span>
             )}
           </div>
+
+          {/* 6. Numéro de chèque (si activé) */}
+          {showChequeNumber && currentTemplate.positions.chequeNumber && (
+            <div
+              className={`positioned-field ${activeField === "chequeNumber" ? "selected" : ""}`}
+              style={getStyle("chequeNumber")}
+              onPointerDown={(e) => handlePointerDown("chequeNumber", e)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectField("chequeNumber");
+              }}
+              title="Numéro de chèque (glisser pour ajuster)"
+            >
+              <span className="field-text">{chequeNumber || "N° 0048291"}</span>
+              {activeField === "chequeNumber" && (
+                <span className="field-coord-bubble">
+                  <Move size={10} /> {currentTemplate.positions.chequeNumber.x.toFixed(1)}, {currentTemplate.positions.chequeNumber.y.toFixed(1)} mm
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -389,6 +414,12 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
           <div className="detail-item">
             <span className="detail-label">Banque / Modèle :</span>
             <strong className="detail-val">{currentTemplate.name}</strong>
+          </div>
+          <div className="detail-item">
+            <span className="detail-label">N° de chèque :</span>
+            <strong className="detail-val">
+              {showChequeNumber ? (chequeNumber || "0048291") : "Masqué"}
+            </strong>
           </div>
           <div className="detail-item">
             <span className="detail-label">Montant en DZD :</span>

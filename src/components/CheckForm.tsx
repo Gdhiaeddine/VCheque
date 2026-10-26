@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { User, MapPin, Calendar, Sparkles, CheckSquare, ShieldCheck, Clock, Check } from "lucide-react";
+import { User, MapPin, Calendar, Sparkles, CheckSquare, ShieldCheck, Clock, Check, Hash } from "lucide-react";
 import { searchBeneficiaries } from "../services/db";
 import type { BeneficiaryRecord } from "../types";
 
@@ -17,6 +17,10 @@ interface CheckFormProps {
   onChangeIsCrossed: (val: boolean) => void;
   crossedWithText?: boolean;
   onChangeCrossedWithText?: (val: boolean) => void;
+  showChequeNumber?: boolean;
+  onChangeShowChequeNumber?: (val: boolean) => void;
+  chequeNumber?: string;
+  onChangeChequeNumber?: (val: string) => void;
   onSubmit: () => void;
 }
 
@@ -34,6 +38,10 @@ export const CheckForm: React.FC<CheckFormProps> = ({
   onChangeIsCrossed,
   crossedWithText = true,
   onChangeCrossedWithText,
+  showChequeNumber = false,
+  onChangeShowChequeNumber,
+  chequeNumber = "",
+  onChangeChequeNumber,
   onSubmit
 }) => {
   // Autocomplete state
@@ -257,8 +265,8 @@ export const CheckForm: React.FC<CheckFormProps> = ({
           </div>
         </div>
 
-        {/* Ligne 2 : Lieu, Date et Chèque barré */}
-        <div className="form-row-middle">
+        {/* Ligne 2 : Lieu et Date */}
+        <div className="form-row-middle form-row-two-cols">
           <div className="form-group form-group-place">
             <label htmlFor="place-field" className="form-label">
               Lieu
@@ -291,7 +299,10 @@ export const CheckForm: React.FC<CheckFormProps> = ({
               />
             </div>
           </div>
+        </div>
 
+        {/* Ligne 3 : Options Chèque barré et Numéro de chèque */}
+        <div className="form-row-options">
           {/* Option Chèque barré (//) avec choix de la mention Non endossable */}
           <div className="form-group form-group-crossed">
             <label htmlFor="crossed-checkbox-field" className="form-label">
@@ -328,6 +339,47 @@ export const CheckForm: React.FC<CheckFormProps> = ({
                     />
                     <span>Mention « Non endossable »</span>
                   </label>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Option Numéro de chèque */}
+          <div className="form-group form-group-cheque-number">
+            <label htmlFor="cheque-number-toggle" className="form-label">
+              Numéro de chèque (N°)
+            </label>
+            <div className="crossed-control-container">
+              <label className="crossed-input-control" htmlFor="cheque-number-toggle">
+                <input
+                  id="cheque-number-toggle"
+                  type="checkbox"
+                  className="crossed-checkbox-input"
+                  checked={showChequeNumber}
+                  onChange={(e) => onChangeShowChequeNumber?.(e.target.checked)}
+                />
+                <Hash size={16} className={`crossed-icon ${showChequeNumber ? "active" : ""}`} />
+                <span className="crossed-control-text">
+                  {showChequeNumber ? "Imprimer le numéro" : "Masqué (recommandé)"}
+                </span>
+                <span className={`crossed-badge ${showChequeNumber ? "active" : ""}`}>
+                  {showChequeNumber ? "Actif" : "Masqué"}
+                </span>
+              </label>
+
+              {showChequeNumber && onChangeChequeNumber && (
+                <div className="cheque-number-input-row">
+                  <div className="input-with-icon">
+                    <Hash size={15} className="input-icon" />
+                    <input
+                      id="cheque-number-field"
+                      type="text"
+                      className="form-input with-icon"
+                      value={chequeNumber || ""}
+                      onChange={(e) => onChangeChequeNumber(e.target.value)}
+                      placeholder="Ex: 0048291"
+                    />
+                  </div>
                 </div>
               )}
             </div>

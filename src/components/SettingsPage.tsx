@@ -436,6 +436,24 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 </div>
               </label>
             </div>
+
+            {/* Numéro de chèque par défaut */}
+            <div className="setting-row">
+              <label className="settings-switch-label">
+                <input
+                  type="checkbox"
+                  className="settings-switch-input"
+                  checked={settings.defaultShowChequeNumber ?? false}
+                  onChange={(e) => updateSetting("defaultShowChequeNumber", e.target.checked)}
+                />
+                <div className="switch-text-content">
+                  <strong className="switch-title">Activer le numéro de chèque par défaut</strong>
+                  <span className="switch-desc">
+                    Désactivé (masqué) par défaut recommandé : les formules de chèques sont déjà pré-imprimées par la banque avec leur numéro de série officiel.
+                  </span>
+                </div>
+              </label>
+            </div>
           </div>
         </div>
 

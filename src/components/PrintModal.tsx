@@ -37,6 +37,8 @@ export interface PrintModalProps {
   date: string;
   isCrossed?: boolean;
   crossedWithText?: boolean;
+  showChequeNumber?: boolean;
+  chequeNumber?: string;
   formattedNumeric?: string;
   isReprint?: boolean;
   printCount?: number;
@@ -155,6 +157,8 @@ export const PrintModal: React.FC<PrintModalProps> = ({
   date,
   isCrossed = true,
   crossedWithText = true,
+  showChequeNumber = false,
+  chequeNumber,
   formattedNumeric,
   isReprint = false,
   printCount = 0
@@ -556,6 +560,9 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                     >
                       <div className="mini-bank-header">
                         <span className="mini-bank-tag">{currentTemplate.shortName || "CHÈQUE"}</span>
+                        {showChequeNumber && chequeNumber && (
+                          <span className="mini-cheque-num-tag">N° {chequeNumber}</span>
+                        )}
                         {isCrossed && <span className="mini-crossed-tag">// BARRÉ //</span>}
                         <span className="mini-amount-tag"># {formattedAmount} DA #</span>
                       </div>
@@ -625,7 +632,10 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                   )}
                   <div className="zoom-cheque-overlay">
                     <div className="zoom-header">
-                      <span className="zoom-bank-title">{currentTemplate.name}</span>
+                      <span className="zoom-bank-title">
+                        {currentTemplate.name}
+                        {showChequeNumber && chequeNumber && ` · N° ${chequeNumber}`}
+                      </span>
                       <span className="zoom-amount"># {formattedAmount} DA #</span>
                     </div>
                     <div className="zoom-beneficiary">
