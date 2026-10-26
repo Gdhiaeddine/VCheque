@@ -35,11 +35,19 @@ export interface ChequeData {
   date: string;
   chequeNumber?: string;
   showChequeNumber?: boolean;
+  reference?: string; // Référence interne (N° facture, bon de commande, note)
   isCrossed: boolean; // Chèque barré
   crossedWithText?: boolean; // Mention "Non endossable" entre les barres
 }
 
-export type ChequeStatus = "saved" | "printed";
+export type ChequeStatus =
+  | "saved"      // Alias historique (Brouillon)
+  | "brouillon"  // En cours de rédaction
+  | "pret"       // Validé, prêt pour impression
+  | "printed"    // Imprimé
+  | "remis"      // Remis en main propre ou envoyé au bénéficiaire
+  | "encaisse"   // Débité / encaissé sur le compte
+  | "annule";    // Annulé avec motif conservé dans l'historique
 
 export type PrintAttemptStatus = "requested" | "confirmed" | "failed" | "cancelled";
 
@@ -67,9 +75,14 @@ export interface ChequeRecord {
   date: string;
   chequeNumber?: string;
   showChequeNumber?: boolean;
+  reference?: string; // Référence interne
   bankTemplateId: string;
   bankName: string;
   status: ChequeStatus;
+  cancellationReason?: string; // Motif d'annulation
+  cancelledAt?: string; // Horodatage annulation
+  deliveredAt?: string; // Horodatage remise
+  cashedAt?: string; // Horodatage encaissement
   isCrossed?: boolean;
   crossedWithText?: boolean;
   printCount?: number; // 0 = sauvegardé, 1 = imprimé, 2+ = réimprimé

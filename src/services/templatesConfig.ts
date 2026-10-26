@@ -22,16 +22,24 @@ export async function loadTemplatesFromConfigFile(): Promise<BankTemplate[]> {
           const existingIds = new Set(parsed.map((p) => p.id));
           const missingDefaults = defaultBankTemplates.filter((def) => !existingIds.has(def.id));
 
-          // Met également à jour backgroundImage pour les modèles qui n'avaient pas encore leur scan officiel
+          // Met également à jour backgroundImage et logoUrl pour les modèles existants
           const updatedParsed = parsed.map((item) => {
             const def = defaultBankTemplates.find((d) => d.id === item.id);
+            let updated = item;
             if (def && (!item.backgroundImage || item.backgroundImage.includes("/src/assets/"))) {
-              return { ...item, backgroundImage: def.backgroundImage };
+              updated = { ...updated, backgroundImage: def.backgroundImage };
             }
-            return item;
+            if (def && (!item.logoUrl || item.logoUrl.includes("/src/assets/"))) {
+              updated = { ...updated, logoUrl: def.logoUrl };
+            }
+            return updated;
           });
 
-          if (missingDefaults.length > 0 || updatedParsed.some((item, idx) => item.backgroundImage !== parsed[idx].backgroundImage)) {
+          const hasLogoOrBgUpdates = updatedParsed.some(
+            (item, idx) => item.backgroundImage !== parsed[idx].backgroundImage || item.logoUrl !== parsed[idx].logoUrl
+          );
+
+          if (missingDefaults.length > 0 || hasLogoOrBgUpdates) {
             const merged = [...updatedParsed, ...missingDefaults];
             const updatedJson = JSON.stringify(merged, null, 2);
             await invoke<string>("save_templates_config", { content: updatedJson }).catch(console.error);
@@ -64,12 +72,21 @@ export async function loadTemplatesFromConfigFile(): Promise<BankTemplate[]> {
         const missingDefaults = defaultBankTemplates.filter((def) => !existingIds.has(def.id));
         const updatedParsed = parsed.map((item) => {
           const def = defaultBankTemplates.find((d) => d.id === item.id);
+          let updated = item;
           if (def && (!item.backgroundImage || item.backgroundImage.includes("/src/assets/"))) {
-            return { ...item, backgroundImage: def.backgroundImage };
+            updated = { ...updated, backgroundImage: def.backgroundImage };
           }
-          return item;
+          if (def && (!item.logoUrl || item.logoUrl.includes("/src/assets/"))) {
+            updated = { ...updated, logoUrl: def.logoUrl };
+          }
+          return updated;
         });
-        if (missingDefaults.length > 0) {
+
+        const hasLogoOrBgUpdates = updatedParsed.some(
+          (item, idx) => item.backgroundImage !== parsed[idx].backgroundImage || item.logoUrl !== parsed[idx].logoUrl
+        );
+
+        if (missingDefaults.length > 0 || hasLogoOrBgUpdates) {
           const merged = [...updatedParsed, ...missingDefaults];
           localStorage.setItem(LOCAL_TEMPLATES_KEY, JSON.stringify(merged));
           return merged;

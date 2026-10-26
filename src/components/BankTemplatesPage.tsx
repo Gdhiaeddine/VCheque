@@ -195,16 +195,65 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
     }
   };
 
-  // Upload bank logo / icon
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+// Helper to optimize and downscale uploaded bank logo to a lightweight self-contained Data URL
+function optimizeLogoFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (file.type === "image/svg+xml") {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIM = 256;
+        let w = img.width;
+        let h = img.height;
+        if (w > MAX_DIM || h > MAX_DIM) {
+          if (w > h) {
+            h = Math.round((h * MAX_DIM) / w);
+            w = MAX_DIM;
+          } else {
+            w = Math.round((w * MAX_DIM) / h);
+            h = MAX_DIM;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/png");
+        resolve(dataUrl);
+      };
+      img.onerror = () => {
+        resolve(e.target?.result as string);
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+  // Upload bank logo / icon (optimisé et auto-contenu en Data URL base64)
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && editingTemplate) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const result = event.target?.result as string;
-        setEditingTemplate((prev) => (prev ? { ...prev, logoUrl: result } : null));
-      };
-      reader.readAsDataURL(file);
+      try {
+        const optimizedDataUrl = await optimizeLogoFile(file);
+        setEditingTemplate((prev) => (prev ? { ...prev, logoUrl: optimizedDataUrl } : null));
+      } catch (err) {
+        console.error("Erreur chargement logo:", err);
+      }
     }
   };
 

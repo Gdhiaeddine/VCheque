@@ -1,5 +1,6 @@
 import type { BankTemplate, Positions } from "./types";
 import elSalamChequeImg from "./assets/el-salam.jpg";
+import { DEFAULT_BANK_LOGOS } from "./assets/bankLogos";
 
 export const elSalamPositions: Positions = {
   // Sur le chèque officiel Banque Al Salam :
@@ -39,6 +40,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/el-salam.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["el-salam"],
     positions: elSalamPositions,
     notes: "Chéquier officiel Banque Al Salam (175 × 80 mm)."
   },
@@ -51,6 +53,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/bna.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["bna"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -71,6 +74,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/bea.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["bea"],
     positions: {
       numeric: { x: 137, y: 9.0, size: 3.8, align: "left" },
       words: { x: 37, y: 27.5, size: 3.2, align: "left" },
@@ -91,6 +95,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/badr.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["badr"],
     positions: {
       numeric: { x: 138, y: 9.5, size: 3.8, align: "left" },
       words: { x: 38, y: 28.5, size: 3.2, align: "left" },
@@ -111,6 +116,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/cpa.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["cpa"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -131,6 +137,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/bdl.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["bdl"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -151,6 +158,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/albaraka.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["albaraka"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -171,6 +179,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/algerie-poste.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["algerie-poste"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 27.5, size: 3.2, align: "left" },
@@ -191,6 +200,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/cnep.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["cnep"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -211,6 +221,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/abc-bank.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["abc-bank"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -231,6 +242,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/bnp.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["bnp"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -251,6 +263,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/natixis.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["natixis"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -271,6 +284,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/societe-generale.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["societe-generale"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -291,6 +305,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/gulf-bank.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["gulf-bank"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -311,6 +326,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/housing-bank.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["housing-bank"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -331,6 +347,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/trust.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["trust"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -351,6 +368,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/fransa-bank.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["fransa-bank"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },
@@ -371,6 +389,7 @@ export const defaultBankTemplates: BankTemplate[] = [
     width: 175,
     height: 80,
     backgroundImage: "/assets/tresor-public.jpg",
+    logoUrl: DEFAULT_BANK_LOGOS["tresor-public"],
     positions: {
       numeric: { x: 138, y: 9.0, size: 3.8, align: "left" },
       words: { x: 38, y: 28.0, size: 3.2, align: "left" },

@@ -20,7 +20,14 @@ import {
   XCircle,
   ShieldCheck,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Ban,
+  SlidersHorizontal,
+  Calendar,
+  Send,
+  CheckSquare,
+  ChevronDown,
+  Filter
 } from "lucide-react";
 import type { ChequeRecord, ChequeStatus, BankTemplate, PrintAttemptRecord, PrintAttemptStatus } from "../types";
 import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
@@ -28,6 +35,9 @@ import { exportChequeToPdf } from "../services/pdfExport";
 import { defaultBankTemplates } from "../banksData";
 import {
   getPaginatedCheques,
+  getAllFilteredCheques,
+  cancelChequeRecord,
+  updateChequeStatus,
   deleteChequeRecord,
   clearAllChequeRecords,
   getPrintAttempts,
@@ -35,6 +45,7 @@ import {
   clearPrintLogs,
   type HistoryStats
 } from "../services/db";
+import { exportChequesToCsv, exportChequesToExcel, STATUS_LABELS } from "../services/exportReports";
 
 interface HistoryPageProps {
   history?: ChequeRecord[];
@@ -56,10 +67,29 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   onBackToHome,
   refreshTrigger = 0
 }) => {
-  // Query state
+  // Query & Filters state
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"all" | ChequeStatus>("all");
+  const [bankFilter, setBankFilter] = useState<string>("all");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+
+  // Advanced multi-criteria search state
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
+  const [advChequeNumber, setAdvChequeNumber] = useState<string>("");
+  const [advReference, setAdvReference] = useState<string>("");
+  const [advBeneficiary, setAdvBeneficiary] = useState<string>("");
+  const [advMinAmount, setAdvMinAmount] = useState<string>("");
+  const [advMaxAmount, setAdvMaxAmount] = useState<string>("");
+
+  // Export state
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  // Modal d'annulation de chèque
+  const [chequeToCancel, setChequeToCancel] = useState<ChequeRecord | null>(null);
+  const [cancelReasonPreset, setCancelReasonPreset] = useState<string>("Erreur sur le montant");
+  const [cancelCustomReason, setCancelCustomReason] = useState<string>("");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -74,7 +104,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     totalCount: 0,
     totalAmountFormatted: "0,00",
     printedCount: 0,
-    savedCount: 0
+    savedCount: 0,
+    readyCount: 0,
+    deliveredCount: 0,
+    cashedCount: 0,
+    cancelledCount: 0
   });
 
   // Mode de vue : Chèques émis vs Journal d'audit des impressions
@@ -100,6 +134,21 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     setCurrentPage(1);
   };
 
+  const handleResetAllFilters = () => {
+    setSearchQuery("");
+    setDebouncedSearch("");
+    setStatusFilter("all");
+    setBankFilter("all");
+    setStartDate("");
+    setEndDate("");
+    setAdvChequeNumber("");
+    setAdvReference("");
+    setAdvBeneficiary("");
+    setAdvMinAmount("");
+    setAdvMaxAmount("");
+    setCurrentPage(1);
+  };
+
   // Charger les données paginées depuis SQLite / service db
   const fetchRecords = useCallback(async () => {
     setIsLoading(true);
@@ -108,7 +157,15 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         page: currentPage,
         pageSize,
         searchQuery: debouncedSearch,
-        statusFilter
+        statusFilter,
+        bankFilter,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        chequeNumber: advChequeNumber || undefined,
+        reference: advReference || undefined,
+        beneficiaryQuery: advBeneficiary || undefined,
+        minAmount: advMinAmount ? parseFloat(advMinAmount) : undefined,
+        maxAmount: advMaxAmount ? parseFloat(advMaxAmount) : undefined
       });
 
       setRecords(res.items);
@@ -120,7 +177,20 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, pageSize, debouncedSearch, statusFilter]);
+  }, [
+    currentPage,
+    pageSize,
+    debouncedSearch,
+    statusFilter,
+    bankFilter,
+    startDate,
+    endDate,
+    advChequeNumber,
+    advReference,
+    advBeneficiary,
+    advMinAmount,
+    advMaxAmount
+  ]);
 
   const fetchPrintLogs = useCallback(async () => {
     try {
@@ -136,6 +206,79 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     fetchRecords();
     fetchPrintLogs();
   }, [fetchRecords, fetchPrintLogs, refreshTrigger]);
+
+  const handleCancelChequeConfirm = async () => {
+    if (!chequeToCancel) return;
+    const finalReason =
+      cancelReasonPreset === "Autre"
+        ? cancelCustomReason.trim() || "Autre motif non spécifié"
+        : cancelCustomReason.trim()
+        ? `${cancelReasonPreset} (${cancelCustomReason.trim()})`
+        : cancelReasonPreset;
+
+    await cancelChequeRecord(chequeToCancel.id, finalReason);
+    setChequeToCancel(null);
+    setCancelReasonPreset("Erreur sur le montant");
+    setCancelCustomReason("");
+    await fetchRecords();
+    await fetchPrintLogs();
+  };
+
+  const handleUpdateStatus = async (id: string, newStatus: ChequeStatus) => {
+    if (newStatus === "annule") {
+      const target = records.find((r) => r.id === id);
+      if (target) setChequeToCancel(target);
+      return;
+    }
+    await updateChequeStatus(id, newStatus);
+    await fetchRecords();
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      setIsExporting(true);
+      const all = await getAllFilteredCheques({
+        searchQuery: debouncedSearch,
+        statusFilter,
+        bankFilter,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        chequeNumber: advChequeNumber || undefined,
+        reference: advReference || undefined,
+        beneficiaryQuery: advBeneficiary || undefined,
+        minAmount: advMinAmount ? parseFloat(advMinAmount) : undefined,
+        maxAmount: advMaxAmount ? parseFloat(advMaxAmount) : undefined
+      });
+      exportChequesToCsv(all);
+    } catch (err) {
+      console.error("Erreur export CSV:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      setIsExporting(true);
+      const all = await getAllFilteredCheques({
+        searchQuery: debouncedSearch,
+        statusFilter,
+        bankFilter,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        chequeNumber: advChequeNumber || undefined,
+        reference: advReference || undefined,
+        beneficiaryQuery: advBeneficiary || undefined,
+        minAmount: advMinAmount ? parseFloat(advMinAmount) : undefined,
+        maxAmount: advMaxAmount ? parseFloat(advMaxAmount) : undefined
+      });
+      exportChequesToExcel(all);
+    } catch (err) {
+      console.error("Erreur export Excel:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const handleOpenChequeAudit = async (cheque: ChequeRecord) => {
     setSelectedChequeForAudit(cheque);
@@ -290,6 +433,32 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
           </div>
 
           <div className="header-actions-group">
+            {activeView === "cheques" && (
+              <>
+                <button
+                  type="button"
+                  className="btn-export-history"
+                  onClick={handleExportCsv}
+                  disabled={isExporting || totalCount === 0}
+                  title="Exporter tous les chèques filtrés en fichier CSV (encodage Excel UTF-8)"
+                >
+                  <FileSpreadsheet size={15} />
+                  <span>{isExporting ? "Exportation..." : "Exporter CSV"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-export-history excel"
+                  onClick={handleExportExcel}
+                  disabled={isExporting || totalCount === 0}
+                  title="Exporter tous les chèques filtrés en classeur Excel (.xls)"
+                >
+                  <FileDown size={15} />
+                  <span>Exporter Excel</span>
+                </button>
+              </>
+            )}
+
             <button
               type="button"
               className="btn-refresh-history"
@@ -352,95 +521,282 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
       {activeView === "cheques" ? (
         <>
-          {/* 2. Cartes statistiques */}
+          {/* 2. Cartes statistiques du cycle de vie */}
           <div className="history-stats-grid">
-        <div className="history-stat-card">
-          <div className="stat-icon-wrapper gold">
-            <FileText size={18} />
-          </div>
-          <div className="stat-content">
-            <span className="stat-label">Total des chèques</span>
-            <strong className="stat-value">{stats.totalCount}</strong>
-          </div>
-        </div>
+            <div className="history-stat-card">
+              <div className="stat-icon-wrapper gold">
+                <FileText size={18} />
+              </div>
+              <div className="stat-content">
+                <span className="stat-label">Total des chèques</span>
+                <strong className="stat-value">{stats.totalCount}</strong>
+              </div>
+            </div>
 
-        <div className="history-stat-card">
-          <div className="stat-icon-wrapper green">
-            <CheckCircle2 size={18} />
-          </div>
-          <div className="stat-content">
-            <span className="stat-label">Chèques imprimés</span>
-            <strong className="stat-value">{stats.printedCount}</strong>
-          </div>
-        </div>
+            <div className="history-stat-card">
+              <div className="stat-icon-wrapper green">
+                <CheckCircle2 size={18} />
+              </div>
+              <div className="stat-content">
+                <span className="stat-label">Imprimés</span>
+                <strong className="stat-value">{stats.printedCount}</strong>
+              </div>
+            </div>
 
-        <div className="history-stat-card">
-          <div className="stat-icon-wrapper blue">
-            <Clock size={18} />
-          </div>
-          <div className="stat-content">
-            <span className="stat-label">Enregistrés (Brouillons)</span>
-            <strong className="stat-value">{stats.savedCount}</strong>
-          </div>
-        </div>
+            <div className="history-stat-card">
+              <div className="stat-icon-wrapper blue">
+                <Clock size={18} />
+              </div>
+              <div className="stat-content">
+                <span className="stat-label">Brouillons & Prêts</span>
+                <strong className="stat-value">{(stats.readyCount || 0) + stats.savedCount}</strong>
+              </div>
+            </div>
 
-        <div className="history-stat-card">
-          <div className="stat-icon-wrapper amber">
-            <Building2 size={18} />
-          </div>
-          <div className="stat-content">
-            <span className="stat-label">Montant cumulé</span>
-            <strong className="stat-value">{stats.totalAmountFormatted} DA</strong>
-          </div>
-        </div>
-      </div>
+            <div className="history-stat-card">
+              <div className="stat-icon-wrapper amber">
+                <Send size={18} />
+              </div>
+              <div className="stat-content">
+                <span className="stat-label">Remis & Encaissés</span>
+                <strong className="stat-value">{(stats.deliveredCount || 0) + (stats.cashedCount || 0)}</strong>
+              </div>
+            </div>
 
-      {/* 3. Barre de recherche et filtres de statut */}
-      <div className="history-toolbar-card">
-        <div className="history-search-box">
-          <Search size={16} className="history-search-icon" />
-          <input
-            type="text"
-            className="history-search-input"
-            placeholder="Rechercher instantanément par bénéficiaire, banque, montant, date ou lieu..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              className="search-clear-btn"
-              onClick={() => setSearchQuery("")}
-            >
-              Effacer
-            </button>
-          )}
-        </div>
+            <div className="history-stat-card cancelled-stat">
+              <div className="stat-icon-wrapper red">
+                <Ban size={18} />
+              </div>
+              <div className="stat-content">
+                <span className="stat-label">Annulés</span>
+                <strong className="stat-value">{stats.cancelledCount || 0}</strong>
+              </div>
+            </div>
 
-        <div className="history-filter-pills">
-          <button
-            type="button"
-            className={`filter-pill ${statusFilter === "all" ? "active" : ""}`}
-            onClick={() => handleStatusFilterChange("all")}
-          >
-            Tous ({stats.totalCount})
-          </button>
-          <button
-            type="button"
-            className={`filter-pill ${statusFilter === "printed" ? "active" : ""}`}
-            onClick={() => handleStatusFilterChange("printed")}
-          >
-            Imprimés ({stats.printedCount})
-          </button>
-          <button
-            type="button"
-            className={`filter-pill ${statusFilter === "saved" ? "active" : ""}`}
-            onClick={() => handleStatusFilterChange("saved")}
-          >
-            Enregistrés ({stats.savedCount})
-          </button>
-        </div>
-      </div>
+            <div className="history-stat-card total-amount-card">
+              <div className="stat-icon-wrapper gold">
+                <Building2 size={18} />
+              </div>
+              <div className="stat-content">
+                <span className="stat-label">Montant actif cumulé</span>
+                <strong className="stat-value">{stats.totalAmountFormatted} DA</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Barre de recherche et filtres unifiés sur la même ligne */}
+          <div className="history-toolbar-card">
+            <div className="history-toolbar-unified-row">
+              {/* Recherche globale */}
+              <div className="history-search-box">
+                <Search size={15} className="history-search-icon" />
+                <input
+                  type="text"
+                  className="history-search-input"
+                  placeholder="Recherche générale : bénéficiaire, montant, banque, date, n° chèque..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    className="search-clear-btn"
+                    onClick={() => setSearchQuery("")}
+                  >
+                    Effacer
+                  </button>
+                )}
+              </div>
+
+              {/* Filtre de Statut (dropdown menu avec même style) */}
+              <div className="filter-group-dropdown">
+                <Filter size={14} className="filter-field-icon" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => handleStatusFilterChange(e.target.value as any)}
+                  className="history-select-dropdown"
+                  title="Filtrer par statut du cycle de vie"
+                >
+                  <option value="all">Tous les statuts ({stats.totalCount})</option>
+                  <option value="saved">Brouillons ({stats.savedCount})</option>
+                  <option value="pret">Prêts ({stats.readyCount || 0})</option>
+                  <option value="printed">Imprimés ({stats.printedCount})</option>
+                  <option value="remis">Remis ({stats.deliveredCount || 0})</option>
+                  <option value="encaisse">Encaissés ({stats.cashedCount || 0})</option>
+                  <option value="annule">Annulés ({stats.cancelledCount || 0})</option>
+                </select>
+              </div>
+
+              {/* Filtre de Banque (même style) */}
+              <div className="filter-group-dropdown">
+                <Building2 size={14} className="filter-field-icon" />
+                <select
+                  value={bankFilter}
+                  onChange={(e) => {
+                    setBankFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="history-select-dropdown"
+                  title="Filtrer par banque"
+                >
+                  <option value="all">Toutes les banques</option>
+                  {templates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.shortName || tpl.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtre de Période (même style) */}
+              <div className="filter-group-dropdown date-group">
+                <Calendar size={14} className="filter-field-icon" />
+                <div className="date-inputs-wrapper">
+                  <input
+                    type="date"
+                    className="history-date-input"
+                    title="Date d'émission de début"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                  <span className="date-separator">au</span>
+                  <input
+                    type="date"
+                    className="history-date-input"
+                    title="Date d'émission de fin"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                  {(startDate || endDate) && (
+                    <button
+                      type="button"
+                      className="btn-clear-dates"
+                      onClick={() => {
+                        setStartDate("");
+                        setEndDate("");
+                        setCurrentPage(1);
+                      }}
+                      title="Effacer les dates"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Bouton Filtres avancés */}
+              <button
+                type="button"
+                className={`btn-toggle-advanced ${showAdvancedFilters ? "active" : ""}`}
+                onClick={() => setShowAdvancedFilters((v) => !v)}
+                title="Afficher/masquer les filtres fins (référence, montant min/max, n° chèque)"
+              >
+                <SlidersHorizontal size={14} />
+                <span>Avancé</span>
+                {Boolean(advChequeNumber || advReference || advBeneficiary || advMinAmount || advMaxAmount) && (
+                  <span className="active-adv-dot" />
+                )}
+              </button>
+
+              {/* Réinitialiser filtres */}
+              {(statusFilter !== "all" ||
+                bankFilter !== "all" ||
+                startDate ||
+                endDate ||
+                advChequeNumber ||
+                advReference ||
+                advBeneficiary ||
+                advMinAmount ||
+                advMaxAmount ||
+                searchQuery) && (
+                <button
+                  type="button"
+                  className="btn-reset-filters"
+                  onClick={handleResetAllFilters}
+                  title="Réinitialiser tous les critères de recherche"
+                >
+                  <X size={13} />
+                  <span>Réinitialiser</span>
+                </button>
+              )}
+            </div>
+
+            {/* Volet repliable : Recherche avancée multi-critères sur une seule ligne */}
+            {showAdvancedFilters && (
+              <div className="history-advanced-drawer">
+                <div className="adv-filter-field">
+                  <label>N° Chèque :</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 0048291"
+                    value={advChequeNumber}
+                    onChange={(e) => {
+                      setAdvChequeNumber(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+
+                <div className="adv-filter-field">
+                  <label>Réf / Facture :</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: FAC-2026-042"
+                    value={advReference}
+                    onChange={(e) => {
+                      setAdvReference(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+
+                <div className="adv-filter-field">
+                  <label>Bénéficiaire :</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: SONELGAZ"
+                    value={advBeneficiary}
+                    onChange={(e) => {
+                      setAdvBeneficiary(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+
+                <div className="adv-filter-field">
+                  <label>Min :</label>
+                  <input
+                    type="number"
+                    placeholder="0 DA"
+                    value={advMinAmount}
+                    onChange={(e) => {
+                      setAdvMinAmount(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+
+                <div className="adv-filter-field">
+                  <label>Max :</label>
+                  <input
+                    type="number"
+                    placeholder="Montant max"
+                    value={advMaxAmount}
+                    onChange={(e) => {
+                      setAdvMaxAmount(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
       {/* 4. Liste des chèques */}
       {records.length === 0 ? (
@@ -506,21 +862,46 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
               const barcodeToken = item.crossedWithText !== false ? "// Barré" : "// Barré simple";
 
               return (
-                <tr key={item.id}>
+                <tr key={item.id} className={item.status === "annule" ? "cheque-row-cancelled" : ""}>
                   <td className="ht-col-status">
-                    <span className={`cheque-status-tag ${item.status}`}>
+                    <span className={`cheque-status-tag ${item.status}`} title={item.status === "annule" ? `Motif : ${item.cancellationReason || "Non précisé"}` : undefined}>
                       {item.status === "printed" ? (
                         <>
                           <CheckCircle2 size={13} />
                           <span>Imprimé{item.printCount && item.printCount > 1 ? ` (x${item.printCount})` : ""}</span>
                         </>
+                      ) : item.status === "pret" ? (
+                        <>
+                          <CheckSquare size={13} />
+                          <span>Prêt</span>
+                        </>
+                      ) : item.status === "remis" ? (
+                        <>
+                          <Send size={13} />
+                          <span>Remis</span>
+                        </>
+                      ) : item.status === "encaisse" ? (
+                        <>
+                          <ShieldCheck size={13} />
+                          <span>Encaissé</span>
+                        </>
+                      ) : item.status === "annule" ? (
+                        <>
+                          <Ban size={13} />
+                          <span>Annulé</span>
+                        </>
                       ) : (
                         <>
                           <Clock size={13} />
-                          <span>Enregistré</span>
+                          <span>Brouillon</span>
                         </>
                       )}
                     </span>
+                    {item.status === "annule" && item.cancellationReason && (
+                      <span className="cancellation-reason-sub" title={item.cancellationReason}>
+                        {item.cancellationReason}
+                      </span>
+                    )}
                   </td>
 
                   <td className="ht-col-beneficiary">
@@ -530,6 +911,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                     >
                       {item.beneficiary || "Bénéficiaire non renseigné"}
                     </span>
+                    {item.reference && (
+                      <span className="ht-reference-badge" title="Référence interne">
+                        Réf: {item.reference}
+                      </span>
+                    )}
                   </td>
 
                   <td className="ht-col-amount">
@@ -564,6 +950,21 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
                   <td className="ht-col-actions">
                     <div className="ht-actions">
+                      {/* Sélecteur de statut rapide */}
+                      <select
+                        className="ht-status-select"
+                        value={item.status === "brouillon" ? "saved" : item.status}
+                        onChange={(e) => handleUpdateStatus(item.id, e.target.value as ChequeStatus)}
+                        title="Changer rapidement le statut du chèque"
+                      >
+                        <option value="saved">Brouillon</option>
+                        <option value="pret">Prêt</option>
+                        <option value="printed">Imprimé</option>
+                        <option value="remis">Remis</option>
+                        <option value="encaisse">Encaissé</option>
+                        {item.status === "annule" && <option value="annule">Annulé</option>}
+                      </select>
+
                       <button
                         type="button"
                         className="ht-act audit"
@@ -616,11 +1017,27 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                         <FileDown size={14} />
                       </button>
 
+                      {/* Bouton Annuler avec motif */}
+                      {item.status !== "annule" ? (
+                        <button
+                          type="button"
+                          className="ht-act cancel-btn"
+                          onClick={() => setChequeToCancel(item)}
+                          title="Annuler ce chèque (conserve l'historique avec le motif)"
+                        >
+                          <Ban size={14} />
+                        </button>
+                      ) : (
+                        <span className="ht-act cancelled-badge" title={`Annulé : ${item.cancellationReason || "Motif non précisé"}`}>
+                          <Ban size={14} />
+                        </span>
+                      )}
+
                       <button
                         type="button"
                         className="ht-act delete"
                         onClick={() => handleDelete(item.id, item.beneficiary)}
-                        title="Supprimer de l'historique"
+                        title="Supprimer définitivement de la base"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -982,6 +1399,103 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                 onClick={() => setSelectedChequeForAudit(null)}
               >
                 Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Modal d'annulation de chèque avec motif obligatoire */}
+      {chequeToCancel && (
+        <div className="cancel-cheque-modal-overlay">
+          <div className="cancel-cheque-modal-dialog">
+            <div className="modal-header-danger">
+              <div className="danger-icon-circle">
+                <Ban size={22} />
+              </div>
+              <div className="danger-header-info">
+                <h3>Annuler le chèque</h3>
+                <p>Le chèque restera archivé avec son motif et sera automatiquement exclu des totaux financiers.</p>
+              </div>
+              <button
+                type="button"
+                className="btn-modal-close"
+                onClick={() => setChequeToCancel(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-cheque-summary-box">
+              <div className="summary-item">
+                <span className="lbl">Bénéficiaire :</span>
+                <strong>{chequeToCancel.beneficiary}</strong>
+              </div>
+              <div className="summary-item">
+                <span className="lbl">Montant :</span>
+                <strong>{chequeToCancel.amount} DA</strong>
+              </div>
+              <div className="summary-item">
+                <span className="lbl">N° Chèque :</span>
+                <strong>{chequeToCancel.chequeNumber || "Non spécifié"}</strong>
+              </div>
+              <div className="summary-item">
+                <span className="lbl">Banque :</span>
+                <strong>{chequeToCancel.bankName}</strong>
+              </div>
+            </div>
+
+            <div className="cancel-reason-selection">
+              <label className="reason-label">Sélectionnez le motif d'annulation :</label>
+              <div className="reason-chips-grid">
+                {[
+                  "Erreur sur le montant",
+                  "Bourrage / Défaut d'impression",
+                  "Détérioration physique",
+                  "Changement de bénéficiaire",
+                  "Chèque perdu ou égaré",
+                  "Annulation de commande",
+                  "Autre"
+                ].map((reason) => (
+                  <button
+                    key={reason}
+                    type="button"
+                    className={`reason-chip ${cancelReasonPreset === reason ? "selected" : ""}`}
+                    onClick={() => setCancelReasonPreset(reason)}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+
+              <div className="custom-reason-input-group">
+                <label className="reason-label">Précisions ou motif complémentaire (optionnel) :</label>
+                <textarea
+                  className="cancel-textarea"
+                  rows={2}
+                  placeholder="Ex: Remplacé par le chèque N°0048292 suite à erreur de centimes..."
+                  value={cancelCustomReason}
+                  onChange={(e) => setCancelCustomReason(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions-footer">
+              <button
+                type="button"
+                className="btn-cancel-abort"
+                onClick={() => setChequeToCancel(null)}
+              >
+                Conserver le chèque (Retour)
+              </button>
+
+              <button
+                type="button"
+                className="btn-confirm-cancel-cheque"
+                onClick={handleCancelChequeConfirm}
+              >
+                <Ban size={15} />
+                <span>Confirmer l'annulation</span>
               </button>
             </div>
           </div>

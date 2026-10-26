@@ -12,13 +12,13 @@ import { CalibrationPanel } from "./components/CalibrationPanel";
 import { ActionBar } from "./components/ActionBar";
 import { amountInFrenchWords, splitWordsByLimit, formatNumericAmount } from "./moneyToWords";
 import { defaultBankTemplates, defaultPositions } from "./banksData";
-import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, AppSettings, PrintAttemptRecord } from "./types";
+import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, ChequeStatus, AppSettings, PrintAttemptRecord } from "./types";
 import { PrintModal, getPaperDimensions, calculateChequePosition } from "./components/PrintModal";
 import { PrintConfirmationModal } from "./components/PrintConfirmationModal";
 import { ExportPdfModal } from "./components/ExportPdfModal";
 import { SplashScreen } from "./components/SplashScreen";
 import { saveChequeRecord, findDuplicateCheque, autoRecordBeneficiary, logPrintAttempt, updatePrintAttemptStatus } from "./services/db";
-import { loadTemplatesFromConfigFile, saveTemplatesToConfigFile } from "./services/templatesConfig";
+import { loadTemplatesFromConfigFile, saveTemplatesToConfigFile, LOCAL_TEMPLATES_KEY } from "./services/templatesConfig";
 import { loadAppSettings, saveAppSettings, resetAppSettings } from "./services/appSettings";
 import { exportChequeToPdf } from "./services/pdfExport";
 import {
@@ -67,10 +67,19 @@ export default function App() {
   // 2. Templates & Calibration State
   const [templates, setTemplates] = useState<BankTemplate[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(LOCAL_TEMPLATES_KEY) || localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Si les modèles en cache manquent de logoUrl, enrichir avec les logos par défaut
+          return parsed.map((item) => {
+            const def = defaultBankTemplates.find((d) => d.id === item.id);
+            if (def && (!item.logoUrl || item.logoUrl.includes("/src/assets/"))) {
+              return { ...item, logoUrl: def.logoUrl };
+            }
+            return item;
+          });
+        }
       }
     } catch {
       // fallback
@@ -157,7 +166,7 @@ export default function App() {
 
   // 5. Active Cheque tracking (Évite les doublons lors de l'enregistrement ou de la réimpression)
   const [activeChequeId, setActiveChequeId] = useState<string | null>(null);
-  const [activeChequeStatus, setActiveChequeStatus] = useState<"saved" | "printed" | null>(null);
+  const [activeChequeStatus, setActiveChequeStatus] = useState<ChequeStatus | null>(null);
   const [activePrintCount, setActivePrintCount] = useState<number>(0);
 
   // Modal d'alerte doublon
@@ -850,12 +859,19 @@ export default function App() {
             onSaveTemplate={handleSaveCustomTemplate}
             onDeleteTemplate={handleDeleteTemplate}
             onImportTemplates={(imported) => {
-              setTemplates(imported);
-              if (imported.length > 0) {
-                setSelectedTemplateId(imported[0].id);
+              const enriched = imported.map((item) => {
+                const def = defaultBankTemplates.find((d) => d.id === item.id);
+                if (def && (!item.logoUrl || item.logoUrl.includes("/src/assets/"))) {
+                  return { ...item, logoUrl: def.logoUrl };
+                }
+                return item;
+              });
+              setTemplates(enriched);
+              if (enriched.length > 0) {
+                setSelectedTemplateId(enriched[0].id);
               }
               setToast({
-                message: `${imported.length} modèle(s) importé(s) avec succès dans le fichier de configuration.`,
+                message: `${enriched.length} modèle(s) importé(s) avec succès avec logos dans la configuration.`,
                 type: "success"
               });
             }}

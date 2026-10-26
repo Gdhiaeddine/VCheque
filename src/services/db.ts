@@ -19,6 +19,14 @@ export interface GetChequesParams {
   pageSize: number;
   searchQuery?: string;
   statusFilter?: "all" | ChequeStatus;
+  bankFilter?: string; // "all" ou id spécifique ("el-salam", "bna", etc.)
+  startDate?: string; // "YYYY-MM-DD"
+  endDate?: string; // "YYYY-MM-DD"
+  chequeNumber?: string;
+  reference?: string;
+  beneficiaryQuery?: string;
+  minAmount?: number;
+  maxAmount?: number;
 }
 
 export interface HistoryStats {
@@ -26,6 +34,10 @@ export interface HistoryStats {
   totalAmountFormatted: string;
   printedCount: number;
   savedCount: number;
+  readyCount?: number;
+  deliveredCount?: number;
+  cashedCount?: number;
+  cancelledCount?: number;
 }
 
 export interface GetBeneficiariesParams {
@@ -111,11 +123,30 @@ export async function getDatabase(): Promise<Database | null> {
     try {
       await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN show_cheque_number INTEGER DEFAULT 0;`);
     } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN reference TEXT;`);
+    } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN cancellation_reason TEXT;`);
+    } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN cancelled_at TEXT;`);
+    } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN delivered_at TEXT;`);
+    } catch {}
+    try {
+      await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN cashed_at TEXT;`);
+    } catch {}
 
     // 2. Index pour accélérer le tri et la pagination
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_created_at ON cheques(created_at DESC);`);
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_status ON cheques(status);`);
     await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_beneficiary ON cheques(beneficiary);`);
+    try {
+      await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_bank ON cheques(bank_template_id);`);
+      await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_cheques_date ON cheques(date);`);
+    } catch {}
 
     // 3. Table des bénéficiaires et index pour saisie semi-automatique rapide
     await dbInstance.execute(`
@@ -297,10 +328,77 @@ async function migrateBeneficiariesIfEmpty(db: Database): Promise<void> {
 }
 
 /**
+ * Construit la clause WHERE et les paramètres pour les requêtes sur les chèques
+ */
+function buildChequesWhereClause(params: GetChequesParams): { whereClause: string; queryParams: any[] } {
+  const { searchQuery = "", statusFilter = "all", bankFilter, startDate, endDate, chequeNumber, reference, beneficiaryQuery, minAmount, maxAmount } = params;
+  const conditions: string[] = [];
+  const queryParams: any[] = [];
+
+  // Filtre de statut
+  if (statusFilter && statusFilter !== "all") {
+    if (statusFilter === "saved") {
+      conditions.push("(status = 'saved' OR status = 'brouillon')");
+    } else {
+      conditions.push("status = ?");
+      queryParams.push(statusFilter);
+    }
+  }
+
+  // Filtre de banque
+  if (bankFilter && bankFilter !== "all") {
+    conditions.push("(bank_template_id = ? OR bank_name = ?)");
+    queryParams.push(bankFilter, bankFilter);
+  }
+
+  // Filtre période début / fin
+  if (startDate) {
+    conditions.push("date >= ?");
+    queryParams.push(startDate);
+  }
+  if (endDate) {
+    conditions.push("date <= ?");
+    queryParams.push(endDate);
+  }
+
+  // Filtres avancés multi-critères
+  if (chequeNumber?.trim()) {
+    conditions.push("cheque_number LIKE ?");
+    queryParams.push(`%${chequeNumber.trim()}%`);
+  }
+  if (reference?.trim()) {
+    conditions.push("reference LIKE ?");
+    queryParams.push(`%${reference.trim()}%`);
+  }
+  if (beneficiaryQuery?.trim()) {
+    conditions.push("LOWER(beneficiary) LIKE ?");
+    queryParams.push(`%${beneficiaryQuery.trim().toLowerCase()}%`);
+  }
+  if (typeof minAmount === "number" && !isNaN(minAmount)) {
+    conditions.push("amount_numeric >= ?");
+    queryParams.push(minAmount);
+  }
+  if (typeof maxAmount === "number" && !isNaN(maxAmount)) {
+    conditions.push("amount_numeric <= ?");
+    queryParams.push(maxAmount);
+  }
+
+  // Filtre de recherche globale
+  if (searchQuery.trim()) {
+    const term = `%${searchQuery.trim().toLowerCase()}%`;
+    conditions.push("(LOWER(beneficiary) LIKE ? OR LOWER(bank_name) LIKE ? OR LOWER(place) LIKE ? OR LOWER(amount) LIKE ? OR date LIKE ? OR cheque_number LIKE ? OR reference LIKE ?)");
+    queryParams.push(term, term, term, term, term, term, term);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  return { whereClause, queryParams };
+}
+
+/**
  * Récupère les chèques avec pagination, filtres et recherche instantanée
  */
 export async function getPaginatedCheques(params: GetChequesParams): Promise<PaginatedResult<ChequeRecord>> {
-  const { page, pageSize, searchQuery = "", statusFilter = "all" } = params;
+  const { page, pageSize } = params;
   const db = await getDatabase();
 
   if (!db) {
@@ -309,36 +407,24 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
   }
 
   try {
-    const conditions: string[] = [];
-    const queryParams: any[] = [];
-
-    // Filtre de statut
-    if (statusFilter !== "all") {
-      conditions.push("status = ?");
-      queryParams.push(statusFilter);
-    }
-
-    // Filtre de recherche
-    if (searchQuery.trim()) {
-      const term = `%${searchQuery.trim().toLowerCase()}%`;
-      conditions.push("(LOWER(beneficiary) LIKE ? OR LOWER(bank_name) LIKE ? OR LOWER(place) LIKE ? OR LOWER(amount) LIKE ? OR date LIKE ?)");
-      queryParams.push(term, term, term, term, term);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const { whereClause, queryParams } = buildChequesWhereClause(params);
 
     // 1. Calcul du total d'éléments correspondant aux filtres
     const countSql = `SELECT COUNT(*) as count FROM cheques ${whereClause};`;
     const countResult = await db.select<{ count: number }[]>(countSql, queryParams);
     const totalCount = countResult[0]?.count ?? 0;
 
-    // 2. Statistiques globales (pour l'ensemble des chèques)
+    // 2. Statistiques globales
     const statsSql = `
       SELECT 
         COUNT(*) as total_count,
-        COALESCE(SUM(amount_numeric), 0) as total_amount,
+        COALESCE(SUM(CASE WHEN status != 'annule' THEN amount_numeric ELSE 0 END), 0) as total_amount,
         COALESCE(SUM(CASE WHEN status = 'printed' THEN 1 ELSE 0 END), 0) as printed_count,
-        COALESCE(SUM(CASE WHEN status = 'saved' THEN 1 ELSE 0 END), 0) as saved_count
+        COALESCE(SUM(CASE WHEN status IN ('saved', 'brouillon') THEN 1 ELSE 0 END), 0) as saved_count,
+        COALESCE(SUM(CASE WHEN status = 'pret' THEN 1 ELSE 0 END), 0) as ready_count,
+        COALESCE(SUM(CASE WHEN status = 'remis' THEN 1 ELSE 0 END), 0) as delivered_count,
+        COALESCE(SUM(CASE WHEN status = 'encaisse' THEN 1 ELSE 0 END), 0) as cashed_count,
+        COALESCE(SUM(CASE WHEN status = 'annule' THEN 1 ELSE 0 END), 0) as cancelled_count
       FROM cheques;
     `;
     const statsResult = await db.select<{
@@ -346,9 +432,23 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
       total_amount: number;
       printed_count: number;
       saved_count: number;
+      ready_count: number;
+      delivered_count: number;
+      cashed_count: number;
+      cancelled_count: number;
     }[]>(statsSql);
 
-    const rawStats = statsResult[0] || { total_count: 0, total_amount: 0, printed_count: 0, saved_count: 0 };
+    const rawStats = statsResult[0] || {
+      total_count: 0,
+      total_amount: 0,
+      printed_count: 0,
+      saved_count: 0,
+      ready_count: 0,
+      delivered_count: 0,
+      cashed_count: 0,
+      cancelled_count: 0
+    };
+
     const stats: HistoryStats = {
       totalCount: rawStats.total_count,
       totalAmountFormatted: Number(rawStats.total_amount).toLocaleString("fr-FR", {
@@ -356,7 +456,11 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
         maximumFractionDigits: 2
       }),
       printedCount: rawStats.printed_count,
-      savedCount: rawStats.saved_count
+      savedCount: rawStats.saved_count,
+      readyCount: rawStats.ready_count,
+      deliveredCount: rawStats.delivered_count,
+      cashedCount: rawStats.cashed_count,
+      cancelledCount: rawStats.cancelled_count
     };
 
     // 3. Récupération de la page demandée via LIMIT et OFFSET
@@ -364,6 +468,8 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
     const selectSql = `
       SELECT 
         id, amount, amount_numeric, beneficiary, place, date, cheque_number as chequeNumber,
+        reference, cancellation_reason as cancellationReason, cancelled_at as cancelledAt,
+        delivered_at as deliveredAt, cashed_at as cashedAt,
         bank_template_id as bankTemplateId, bank_name as bankName, status,
         COALESCE(is_crossed, 1) = 1 as isCrossed,
         COALESCE(crossed_with_text, 1) = 1 as crossedWithText,
@@ -395,6 +501,40 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
 }
 
 /**
+ * Récupère l'ensemble des chèques correspondant aux filtres actifs (pour exports complets CSV / Excel)
+ */
+export async function getAllFilteredCheques(params: Omit<GetChequesParams, "page" | "pageSize">): Promise<ChequeRecord[]> {
+  const db = await getDatabase();
+  if (!db) {
+    return getLocalFilteredCheques(params);
+  }
+
+  try {
+    const { whereClause, queryParams } = buildChequesWhereClause({ ...params, page: 1, pageSize: 999999 });
+    const selectSql = `
+      SELECT 
+        id, amount, amount_numeric, beneficiary, place, date, cheque_number as chequeNumber,
+        reference, cancellation_reason as cancellationReason, cancelled_at as cancelledAt,
+        delivered_at as deliveredAt, cashed_at as cashedAt,
+        bank_template_id as bankTemplateId, bank_name as bankName, status,
+        COALESCE(is_crossed, 1) = 1 as isCrossed,
+        COALESCE(crossed_with_text, 1) = 1 as crossedWithText,
+        COALESCE(show_cheque_number, 0) = 1 as showChequeNumber,
+        COALESCE(print_count, CASE WHEN status = 'printed' THEN 1 ELSE 0 END) as printCount,
+        created_at as createdAt, updated_at as updatedAt, printed_at as printedAt,
+        last_printed_at as lastPrintedAt
+      FROM cheques 
+      ${whereClause}
+      ORDER BY created_at DESC;
+    `;
+    return await db.select<ChequeRecord[]>(selectSql, queryParams);
+  } catch (err) {
+    console.error("Erreur récupération chèques pour export:", err);
+    return getLocalFilteredCheques(params);
+  }
+}
+
+/**
  * Enregistre ou met à jour un chèque dans SQLite et met à jour le miroir localStorage
  */
 export async function saveChequeRecord(record: ChequeRecord): Promise<void> {
@@ -410,9 +550,10 @@ export async function saveChequeRecord(record: ChequeRecord): Promise<void> {
   await db.execute(
     `INSERT OR REPLACE INTO cheques (
       id, amount, amount_numeric, beneficiary, place, date, cheque_number,
+      reference, cancellation_reason, cancelled_at, delivered_at, cashed_at,
       bank_template_id, bank_name, status, is_crossed, crossed_with_text,
       show_cheque_number, print_count, created_at, updated_at, printed_at, last_printed_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);`,
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23);`,
     [
       record.id,
       record.amount,
@@ -421,6 +562,11 @@ export async function saveChequeRecord(record: ChequeRecord): Promise<void> {
       record.place,
       record.date,
       record.chequeNumber || null,
+      record.reference || null,
+      record.cancellationReason || null,
+      record.cancelledAt || null,
+      record.deliveredAt || null,
+      record.cashedAt || null,
       record.bankTemplateId,
       record.bankName,
       record.status,
@@ -434,6 +580,82 @@ export async function saveChequeRecord(record: ChequeRecord): Promise<void> {
       record.lastPrintedAt || record.printedAt || null
     ]
   );
+}
+
+/**
+ * Annule un chèque en conservant son historique et en enregistrant le motif obligatoire
+ */
+export async function cancelChequeRecord(id: string, reason: string): Promise<void> {
+  const now = new Date().toISOString();
+
+  // 1. Miroir localStorage
+  const list = getLocalRecords();
+  const target = list.find((c) => c.id === id);
+  if (target) {
+    target.status = "annule";
+    target.cancellationReason = reason;
+    target.cancelledAt = now;
+    target.updatedAt = now;
+    localStorage.setItem(HISTORIQUE_STORAGE_KEY, JSON.stringify(list));
+  }
+
+  // 2. Base SQLite
+  const db = await getDatabase();
+  if (db) {
+    await db.execute(
+      `UPDATE cheques 
+       SET status = 'annule', cancellation_reason = $1, cancelled_at = $2, updated_at = $3 
+       WHERE id = $4;`,
+      [reason, now, now, id]
+    );
+  }
+
+  // 3. Logger dans les logs d'audit
+  try {
+    if (target) {
+      await logPrintAttempt({
+        id: "log-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+        chequeId: target.id,
+        beneficiary: target.beneficiary,
+        amount: target.amount,
+        bankName: target.bankName,
+        bankTemplateId: target.bankTemplateId,
+        paperFormat: target.printSettings?.paperFormat || "a4-portrait",
+        placement: target.printSettings?.placement || "center",
+        status: "cancelled",
+        attemptedAt: now,
+        failureReason: `Chèque annulé : ${reason}`,
+        copyNumber: target.printCount || 1
+      });
+    }
+  } catch {}
+}
+
+/**
+ * Met à jour le statut du cycle de vie d'un chèque (ex: 'remis', 'encaisse', 'pret', etc.)
+ */
+export async function updateChequeStatus(id: string, status: ChequeStatus): Promise<void> {
+  const now = new Date().toISOString();
+  const list = getLocalRecords();
+  const target = list.find((c) => c.id === id);
+  if (target) {
+    target.status = status;
+    target.updatedAt = now;
+    if (status === "remis") target.deliveredAt = now;
+    if (status === "encaisse") target.cashedAt = now;
+    localStorage.setItem(HISTORIQUE_STORAGE_KEY, JSON.stringify(list));
+  }
+
+  const db = await getDatabase();
+  if (db) {
+    if (status === "remis") {
+      await db.execute(`UPDATE cheques SET status = $1, delivered_at = $2, updated_at = $3 WHERE id = $4;`, [status, now, now, id]);
+    } else if (status === "encaisse") {
+      await db.execute(`UPDATE cheques SET status = $1, cashed_at = $2, updated_at = $3 WHERE id = $4;`, [status, now, now, id]);
+    } else {
+      await db.execute(`UPDATE cheques SET status = $1, updated_at = $2 WHERE id = $3;`, [status, now, id]);
+    }
+  }
 }
 
 /**
@@ -776,33 +998,86 @@ function deleteFromLocalMirror(id: string): void {
   } catch {}
 }
 
+function filterLocalCheques(all: ChequeRecord[], params: Omit<GetChequesParams, "page" | "pageSize">): ChequeRecord[] {
+  const { searchQuery = "", statusFilter = "all", bankFilter, startDate, endDate, chequeNumber, reference, beneficiaryQuery, minAmount, maxAmount } = params;
+
+  return all.filter((item) => {
+    // Statut
+    if (statusFilter && statusFilter !== "all") {
+      if (statusFilter === "saved") {
+        if (item.status !== "saved" && item.status !== "brouillon") return false;
+      } else if (item.status !== statusFilter) {
+        return false;
+      }
+    }
+
+    // Banque
+    if (bankFilter && bankFilter !== "all") {
+      if (item.bankTemplateId !== bankFilter && item.bankName !== bankFilter) return false;
+    }
+
+    // Période
+    if (startDate && item.date < startDate) return false;
+    if (endDate && item.date > endDate) return false;
+
+    // Filtres avancés
+    if (chequeNumber?.trim() && !(item.chequeNumber || "").includes(chequeNumber.trim())) return false;
+    if (reference?.trim() && !(item.reference || "").toLowerCase().includes(reference.trim().toLowerCase())) return false;
+    if (beneficiaryQuery?.trim() && !item.beneficiary.toLowerCase().includes(beneficiaryQuery.trim().toLowerCase())) return false;
+
+    const num = Number((item.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
+    if (typeof minAmount === "number" && !isNaN(minAmount) && num < minAmount) return false;
+    if (typeof maxAmount === "number" && !isNaN(maxAmount) && num > maxAmount) return false;
+
+    // Recherche globale
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      return (
+        item.beneficiary.toLowerCase().includes(q) ||
+        item.bankName.toLowerCase().includes(q) ||
+        item.place.toLowerCase().includes(q) ||
+        item.amount.toLowerCase().includes(q) ||
+        item.date.includes(q) ||
+        (item.chequeNumber && item.chequeNumber.includes(q)) ||
+        (item.reference && item.reference.toLowerCase().includes(q))
+      );
+    }
+
+    return true;
+  });
+}
+
+function getLocalFilteredCheques(params: Omit<GetChequesParams, "page" | "pageSize">): ChequeRecord[] {
+  const all = getLocalRecords();
+  return filterLocalCheques(all, params);
+}
+
 function getLocalPaginatedCheques(params: GetChequesParams): PaginatedResult<ChequeRecord> {
-  const { page, pageSize, searchQuery = "", statusFilter = "all" } = params;
+  const { page, pageSize } = params;
   const all = getLocalRecords();
 
   let totalDinar = 0;
   let printedCount = 0;
   let savedCount = 0;
+  let readyCount = 0;
+  let deliveredCount = 0;
+  let cashedCount = 0;
+  let cancelledCount = 0;
 
   for (const item of all) {
     const num = Number((item.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
-    totalDinar += num;
+    if (item.status !== "annule") {
+      totalDinar += num;
+    }
     if (item.status === "printed") printedCount++;
-    if (item.status === "saved") savedCount++;
+    else if (item.status === "saved" || item.status === "brouillon") savedCount++;
+    else if (item.status === "pret") readyCount++;
+    else if (item.status === "remis") deliveredCount++;
+    else if (item.status === "encaisse") cashedCount++;
+    else if (item.status === "annule") cancelledCount++;
   }
 
-  const filtered = all.filter((item) => {
-    if (statusFilter !== "all" && item.status !== statusFilter) return false;
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().trim();
-    return (
-      item.beneficiary.toLowerCase().includes(q) ||
-      item.bankName.toLowerCase().includes(q) ||
-      item.place.toLowerCase().includes(q) ||
-      item.amount.toLowerCase().includes(q) ||
-      item.date.includes(q)
-    );
-  });
+  const filtered = filterLocalCheques(all, params);
 
   const totalCount = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -823,7 +1098,11 @@ function getLocalPaginatedCheques(params: GetChequesParams): PaginatedResult<Che
         maximumFractionDigits: 2
       }),
       printedCount,
-      savedCount
+      savedCount,
+      readyCount,
+      deliveredCount,
+      cashedCount,
+      cancelledCount
     }
   };
 }
