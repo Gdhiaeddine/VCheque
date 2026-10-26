@@ -350,9 +350,6 @@ function optimizeLogoFile(file: File): Promise<string> {
             <div className="title-with-badge">
               <h1 className="history-main-title">Modèles Bancaires & Chéquiers</h1>
               <span className="count-pill">{templates.length}</span>
-              <span className="db-badge" title="Stockés dans un fichier de configuration externe copiable">
-                Config JSON
-              </span>
             </div>
             <p className="history-main-subtitle">
               Créez et personnalisez les formats de chèques de n'importe quelle banque avec leurs emplacements et longueurs de lignes par défaut.
@@ -362,10 +359,11 @@ function optimizeLogoFile(file: File): Promise<string> {
           <div className="header-actions-group">
             <button
               type="button"
-              className="btn-create-template"
+              className="btn-action-luxury-green"
               onClick={handleCreateNew}
+              title="Créer un nouveau modèle de chèque personnalisé"
             >
-              <Plus size={16} />
+              <Plus size={17} />
               <span>Nouveau modèle de chèque</span>
             </button>
           </div>

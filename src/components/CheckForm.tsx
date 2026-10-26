@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { User, MapPin, Calendar, Sparkles, CheckSquare, ShieldCheck, Clock, Check, Hash } from "lucide-react";
+import { User, MapPin, Calendar, Sparkles, CheckSquare, ShieldCheck, Clock, Check, Hash, CreditCard, BookOpen } from "lucide-react";
 import { searchBeneficiaries } from "../services/db";
-import type { BeneficiaryRecord } from "../types";
+import type { BeneficiaryRecord, BankAccountRecord, ChequeBookRecord } from "../types";
 
 interface CheckFormProps {
   amount: string;
@@ -21,6 +21,11 @@ interface CheckFormProps {
   onChangeShowChequeNumber?: (val: boolean) => void;
   chequeNumber?: string;
   onChangeChequeNumber?: (val: string) => void;
+  accounts?: BankAccountRecord[];
+  selectedAccountId?: string | null;
+  onChangeSelectedAccountId?: (accId: string) => void;
+  activeChequeBook?: ChequeBookRecord | null;
+  onOpenBankAccountsModal?: () => void;
   onSubmit: () => void;
 }
 
@@ -42,6 +47,11 @@ export const CheckForm: React.FC<CheckFormProps> = ({
   onChangeShowChequeNumber,
   chequeNumber = "",
   onChangeChequeNumber,
+  accounts = [],
+  selectedAccountId,
+  onChangeSelectedAccountId,
+  activeChequeBook,
+  onOpenBankAccountsModal,
   onSubmit
 }) => {
   // Autocomplete state
@@ -164,6 +174,58 @@ export const CheckForm: React.FC<CheckFormProps> = ({
       </div>
 
       <div className="form-body form-body-responsive">
+        {/* Bandeau de sélection du compte émetteur et chéquier actif */}
+        {accounts && accounts.length > 0 && (
+          <div className="issuing-account-strip">
+            <div className="issuing-account-left">
+              <div className="issuing-label-with-icon">
+                <CreditCard size={15} className="text-gold" />
+                <span className="issuing-label-title">Compte émetteur :</span>
+              </div>
+              <select
+                className="issuing-account-select"
+                value={selectedAccountId || ""}
+                onChange={(e) => onChangeSelectedAccountId?.(e.target.value)}
+                title="Sélectionner le compte bancaire émetteur de l'entreprise"
+              >
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.label} ({acc.ribOrIban ? `...${acc.ribOrIban.slice(-4)}` : "Sans RIB"}) — {acc.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {activeChequeBook ? (
+              <div
+                className="issuing-chequebook-pill"
+                title={`Chéquier ${activeChequeBook.seriesName} (${activeChequeBook.leavesTotal - activeChequeBook.leavesUsed} chèques restants)`}
+              >
+                <BookOpen size={13} className="text-gold" />
+                <span>
+                  Chéquier : <strong>{activeChequeBook.seriesName}</strong>
+                </span>
+                <span className="chequebook-num-badge">
+                  N° {activeChequeBook.currentNumber}
+                </span>
+                <span className="chequebook-leaves-badge">
+                  {activeChequeBook.leavesTotal - activeChequeBook.leavesUsed} restant{activeChequeBook.leavesTotal - activeChequeBook.leavesUsed > 1 ? "s" : ""}
+                </span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="issuing-add-chequebook-btn"
+                onClick={onOpenBankAccountsModal}
+                title="Déclarer un chéquier pour ce compte"
+              >
+                <BookOpen size={13} />
+                <span>Déclarer un chéquier</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Ligne 1 : Montant et Bénéficiaire côte-à-côte en mode large */}
         <div className="form-row-top">
           {/* Montant (DZD) */}
@@ -368,7 +430,7 @@ export const CheckForm: React.FC<CheckFormProps> = ({
               </label>
 
               {showChequeNumber && onChangeChequeNumber && (
-                <div className="cheque-number-input-row">
+                <div className="cheque-number-input-row" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   <div className="input-with-icon">
                     <Hash size={15} className="input-icon" />
                     <input
@@ -380,6 +442,17 @@ export const CheckForm: React.FC<CheckFormProps> = ({
                       placeholder="Ex: 0012345"
                     />
                   </div>
+                  {activeChequeBook && chequeNumber !== activeChequeBook.currentNumber && (
+                    <button
+                      type="button"
+                      className="btn-sync-chequebook"
+                      onClick={() => onChangeChequeNumber(activeChequeBook.currentNumber)}
+                      title="Utiliser le prochain numéro de chèque de votre chéquier actif"
+                    >
+                      <BookOpen size={11} />
+                      <span>Utiliser N° {activeChequeBook.currentNumber} du chéquier</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>

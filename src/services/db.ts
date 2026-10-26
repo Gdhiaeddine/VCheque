@@ -36,6 +36,8 @@ export interface GetChequesParams {
   page: number; // 1-indexé
   pageSize: number;
   companyId?: string;
+  accountId?: string;
+  chequeBookId?: string;
   searchQuery?: string;
   statusFilter?: "all" | ChequeStatus;
   bankFilter?: string; // "all" ou id spécifique ("el-salam", "bna", etc.)
@@ -529,6 +531,14 @@ function buildChequesWhereClause(params: GetChequesParams): { whereClause: strin
   }
 
   // Filtres avancés multi-critères
+  if (params.accountId && params.accountId !== "all") {
+    conditions.push("account_id = ?");
+    queryParams.push(params.accountId);
+  }
+  if (params.chequeBookId && params.chequeBookId !== "all") {
+    conditions.push("cheque_book_id = ?");
+    queryParams.push(params.chequeBookId);
+  }
   if (chequeNumber?.trim()) {
     conditions.push("cheque_number LIKE ?");
     queryParams.push(`%${chequeNumber.trim()}%`);
@@ -581,7 +591,11 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
     const countResult = await db.select<{ count: number }[]>(countSql, queryParams);
     const totalCount = countResult[0]?.count ?? 0;
 
-    // 2. Statistiques globales
+    // 2. Statistiques globales scopées par entreprise
+    const targetCompId = params.companyId || getActiveCompanyId();
+    const compCondition = targetCompId === "company-default"
+      ? "(company_id = ? OR company_id IS NULL OR company_id = '')"
+      : "company_id = ?";
     const statsSql = `
       SELECT 
         COUNT(*) as total_count,
@@ -592,7 +606,8 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
         COALESCE(SUM(CASE WHEN status = 'remis' THEN 1 ELSE 0 END), 0) as delivered_count,
         COALESCE(SUM(CASE WHEN status = 'encaisse' THEN 1 ELSE 0 END), 0) as cashed_count,
         COALESCE(SUM(CASE WHEN status = 'annule' THEN 1 ELSE 0 END), 0) as cancelled_count
-      FROM cheques;
+      FROM cheques
+      WHERE ${compCondition};
     `;
     const statsResult = await db.select<{
       total_count: number;
@@ -603,7 +618,7 @@ export async function getPaginatedCheques(params: GetChequesParams): Promise<Pag
       delivered_count: number;
       cashed_count: number;
       cancelled_count: number;
-    }[]>(statsSql);
+    }[]>(statsSql, [targetCompId]);
 
     const rawStats = statsResult[0] || {
       total_count: 0,
@@ -1036,24 +1051,21 @@ export async function getPaginatedBeneficiaries(params: GetBeneficiariesParams):
     const countResult = await db.select<{ count: number }[]>(countSql, queryParams);
     const totalCount = countResult[0]?.count ?? 0;
 
-    const statsSql = `
-      SELECT 
-        COUNT(*) as total_count,
-        COALESCE((SELECT name FROM beneficiaries ${whereClause} ORDER BY usage_count DESC LIMIT 1), '—') as most_used_name,
-        COALESCE((SELECT usage_count FROM beneficiaries ${whereClause} ORDER BY usage_count DESC LIMIT 1), 0) as most_used_count
-      FROM beneficiaries ${whereClause};
-    `;
-    const statsResult = await db.select<{
-      total_count: number;
-      most_used_name: string;
-      most_used_count: number;
-    }[]>(statsSql, [...queryParams, ...queryParams]);
+    let mostUsedName = "—";
+    let mostUsedCount = 0;
+    try {
+      const topSql = `SELECT name, usage_count FROM beneficiaries ${whereClause} ORDER BY usage_count DESC, last_used_at DESC LIMIT 1;`;
+      const topResult = await db.select<{ name: string; usage_count: number }[]>(topSql, queryParams);
+      if (topResult && topResult[0]) {
+        mostUsedName = topResult[0].name || "—";
+        mostUsedCount = topResult[0].usage_count || 0;
+      }
+    } catch {}
 
-    const rawStats = statsResult[0] || { total_count: 0, most_used_name: "—", most_used_count: 0 };
     const stats: BeneficiaryStats = {
-      totalCount: rawStats.total_count,
-      mostUsedName: rawStats.most_used_name || "—",
-      mostUsedCount: rawStats.most_used_count || 0
+      totalCount,
+      mostUsedName,
+      mostUsedCount
     };
 
     const offset = Math.max(0, (page - 1) * pageSize);
@@ -1089,25 +1101,30 @@ export async function getPaginatedBeneficiaries(params: GetBeneficiariesParams):
 /**
  * Recherche rapide des suggestions de bénéficiaires pour l'autocomplétion
  */
-export async function searchBeneficiaries(query: string, limit = 8): Promise<BeneficiaryRecord[]> {
+export async function searchBeneficiaries(query: string, limit = 8, companyId?: string): Promise<BeneficiaryRecord[]> {
   const db = await getDatabase();
   if (!db) {
     return searchLocalBeneficiaries(query, limit);
   }
 
   try {
+    const compId = companyId || getActiveCompanyId();
+    const compCondition = compId === "company-default"
+      ? "(company_id = ? OR company_id IS NULL OR company_id = '')"
+      : "company_id = ?";
+
     const q = query.trim().toLowerCase();
     if (q) {
       const term = `%${q}%`;
       return await db.select<BeneficiaryRecord[]>(
         `SELECT 
-          id, name, nickname, phone, note,
+          id, company_id as companyId, name, nickname, phone, rib, note,
           usage_count as usageCount,
           last_used_at as lastUsedAt,
           created_at as createdAt,
           updated_at as updatedAt
         FROM beneficiaries
-        WHERE LOWER(name) LIKE ? OR (nickname IS NOT NULL AND LOWER(nickname) LIKE ?)
+        WHERE ${compCondition} AND (LOWER(name) LIKE ? OR (nickname IS NOT NULL AND LOWER(nickname) LIKE ?))
         ORDER BY 
           CASE 
             WHEN LOWER(name) = ? THEN 0
@@ -1117,20 +1134,21 @@ export async function searchBeneficiaries(query: string, limit = 8): Promise<Ben
           usage_count DESC,
           last_used_at DESC
         LIMIT ?;`,
-        [term, term, q, `${q}%`, limit]
+        [compId, term, term, q, `${q}%`, limit]
       );
     } else {
       return await db.select<BeneficiaryRecord[]>(
         `SELECT 
-          id, name, nickname, phone, note,
+          id, company_id as companyId, name, nickname, phone, rib, note,
           usage_count as usageCount,
           last_used_at as lastUsedAt,
           created_at as createdAt,
           updated_at as updatedAt
         FROM beneficiaries
+        WHERE ${compCondition}
         ORDER BY usage_count DESC, last_used_at DESC
         LIMIT ?;`,
-        [limit]
+        [compId, limit]
       );
     }
   } catch (err) {
@@ -1142,20 +1160,25 @@ export async function searchBeneficiaries(query: string, limit = 8): Promise<Ben
 /**
  * Enregistrement automatique ou mise à jour de la fréquence d'utilisation d'un bénéficiaire
  */
-export async function autoRecordBeneficiary(name: string): Promise<void> {
+export async function autoRecordBeneficiary(name: string, companyId?: string): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed || trimmed === "Bénéficiaire non spécifié" || trimmed === "Entreprise Exemple SARL") return;
 
-  autoRecordLocalBeneficiary(trimmed);
+  const compId = companyId || getActiveCompanyId();
+  autoRecordLocalBeneficiary(trimmed, compId);
 
   const db = await getDatabase();
   if (!db) return;
 
   try {
     const now = new Date().toISOString();
+    const compCondition = compId === "company-default"
+      ? "(company_id = ? OR company_id IS NULL OR company_id = '')"
+      : "company_id = ?";
+
     const existing = await db.select<{ id: string; usage_count: number }[]>(
-      "SELECT id, usage_count FROM beneficiaries WHERE LOWER(name) = ? LIMIT 1;",
-      [trimmed.toLowerCase()]
+      `SELECT id, usage_count FROM beneficiaries WHERE LOWER(name) = ? AND ${compCondition} LIMIT 1;`,
+      [trimmed.toLowerCase(), compId]
     );
 
     if (existing && existing.length > 0) {
@@ -1167,8 +1190,8 @@ export async function autoRecordBeneficiary(name: string): Promise<void> {
     } else {
       const id = "ben-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
       await db.execute(
-        "INSERT INTO beneficiaries (id, name, usage_count, last_used_at, created_at, updated_at) VALUES ($1, $2, 1, $3, $4, $5);",
-        [id, trimmed, now, now, now]
+        "INSERT INTO beneficiaries (id, company_id, name, usage_count, last_used_at, created_at, updated_at) VALUES ($1, $2, $3, 1, $4, $5, $6);",
+        [id, compId, trimmed, now, now, now]
       );
     }
   } catch (err) {
@@ -1350,8 +1373,10 @@ function getLocalRecords(): ChequeRecord[] {
 
 function updateLocalMirror(record: ChequeRecord): void {
   try {
+    const compId = record.companyId || getActiveCompanyId();
+    const withComp = { ...record, companyId: compId };
     const list = getLocalRecords().filter((r) => r.id !== record.id);
-    list.unshift(record);
+    list.unshift(withComp);
     localStorage.setItem(HISTORIQUE_STORAGE_KEY, JSON.stringify(list));
   } catch {}
 }
@@ -1366,7 +1391,16 @@ function deleteFromLocalMirror(id: string): void {
 function filterLocalCheques(all: ChequeRecord[], params: Omit<GetChequesParams, "page" | "pageSize">): ChequeRecord[] {
   const { searchQuery = "", statusFilter = "all", bankFilter, startDate, endDate, chequeNumber, reference, beneficiaryQuery, minAmount, maxAmount } = params;
 
+  const targetCompanyId = params.companyId || getActiveCompanyId();
+
   return all.filter((item) => {
+    // 0. Cloisonnement par entreprise
+    if (targetCompanyId === "company-default") {
+      if (item.companyId && item.companyId !== "company-default") return false;
+    } else {
+      if (item.companyId !== targetCompanyId) return false;
+    }
+
     // Statut
     if (statusFilter && statusFilter !== "all") {
       if (statusFilter === "saved") {
@@ -1392,6 +1426,8 @@ function filterLocalCheques(all: ChequeRecord[], params: Omit<GetChequesParams, 
     if (endDate && itemDate && itemDate > endDate) return false;
 
     // Filtres avancés
+    if (params.accountId && params.accountId !== "all" && item.accountId !== params.accountId) return false;
+    if (params.chequeBookId && params.chequeBookId !== "all" && item.chequeBookId !== params.chequeBookId) return false;
     if (chequeNumber?.trim() && !(item.chequeNumber || "").includes(chequeNumber.trim())) return false;
     if (reference?.trim() && !(item.reference || "").toLowerCase().includes(reference.trim().toLowerCase())) return false;
     if (beneficiaryQuery?.trim() && !item.beneficiary.toLowerCase().includes(beneficiaryQuery.trim().toLowerCase())) return false;
@@ -1426,6 +1462,15 @@ function getLocalFilteredCheques(params: Omit<GetChequesParams, "page" | "pageSi
 function getLocalPaginatedCheques(params: GetChequesParams): PaginatedResult<ChequeRecord> {
   const { page, pageSize } = params;
   const all = getLocalRecords();
+  const targetCompanyId = params.companyId || getActiveCompanyId();
+
+  // Filtrer par entreprise active pour isoler les statistiques et les enregistrements
+  const companyRecords = all.filter((item) => {
+    if (targetCompanyId === "company-default") {
+      return !item.companyId || item.companyId === "company-default";
+    }
+    return item.companyId === targetCompanyId;
+  });
 
   let totalDinar = 0;
   let printedCount = 0;
@@ -1435,7 +1480,7 @@ function getLocalPaginatedCheques(params: GetChequesParams): PaginatedResult<Che
   let cashedCount = 0;
   let cancelledCount = 0;
 
-  for (const item of all) {
+  for (const item of companyRecords) {
     const num = Number((item.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0;
     if (item.status !== "annule") {
       totalDinar += num;
@@ -1448,7 +1493,7 @@ function getLocalPaginatedCheques(params: GetChequesParams): PaginatedResult<Che
     else if (item.status === "annule") cancelledCount++;
   }
 
-  const filtered = filterLocalCheques(all, params);
+  const filtered = filterLocalCheques(companyRecords, params);
 
   const totalCount = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -1463,7 +1508,7 @@ function getLocalPaginatedCheques(params: GetChequesParams): PaginatedResult<Che
     currentPage: validPage,
     pageSize,
     stats: {
-      totalCount: all.length,
+      totalCount: companyRecords.length,
       totalAmountFormatted: totalDinar.toLocaleString("fr-FR", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -1533,8 +1578,10 @@ function migrateLocalBeneficiariesIfEmpty(): void {
 
 function updateLocalBeneficiaryMirror(record: BeneficiaryRecord): void {
   try {
+    const compId = record.companyId || getActiveCompanyId();
+    const withComp = { ...record, companyId: compId };
     const list = getLocalBeneficiaries().filter((b) => b.id !== record.id);
-    list.unshift(record);
+    list.unshift(withComp);
     localStorage.setItem(BENEFICIARIES_STORAGE_KEY, JSON.stringify(list));
   } catch {}
 }
@@ -1546,12 +1593,19 @@ function deleteLocalBeneficiaryMirror(id: string): void {
   } catch {}
 }
 
-function autoRecordLocalBeneficiary(name: string): void {
+function autoRecordLocalBeneficiary(name: string, companyId?: string): void {
   try {
     const trimmed = name.trim();
     if (!trimmed || trimmed === "Bénéficiaire non spécifié" || trimmed === "Entreprise Exemple SARL") return;
+    const targetCompId = companyId || getActiveCompanyId();
     const list = getLocalBeneficiaries();
-    const existingIndex = list.findIndex((b) => b.name.toLowerCase() === trimmed.toLowerCase());
+    const existingIndex = list.findIndex(
+      (b) =>
+        b.name.toLowerCase() === trimmed.toLowerCase() &&
+        (targetCompId === "company-default"
+          ? (!b.companyId || b.companyId === "company-default")
+          : b.companyId === targetCompId)
+    );
     const now = new Date().toISOString();
     if (existingIndex >= 0) {
       list[existingIndex].usageCount = (list[existingIndex].usageCount || 1) + 1;
@@ -1560,6 +1614,7 @@ function autoRecordLocalBeneficiary(name: string): void {
     } else {
       list.unshift({
         id: "ben-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+        companyId: targetCompId,
         name: trimmed,
         usageCount: 1,
         lastUsedAt: now,
@@ -1571,12 +1626,20 @@ function autoRecordLocalBeneficiary(name: string): void {
   } catch {}
 }
 
-function searchLocalBeneficiaries(query: string, limit = 8): BeneficiaryRecord[] {
+function searchLocalBeneficiaries(query: string, limit = 8, companyId?: string): BeneficiaryRecord[] {
   const all = getLocalBeneficiaries();
+  const targetCompanyId = companyId || getActiveCompanyId();
+  const companyBeneficiaries = all.filter((b) => {
+    if (targetCompanyId === "company-default") {
+      return !b.companyId || b.companyId === "company-default";
+    }
+    return b.companyId === targetCompanyId;
+  });
+
   const q = query.trim().toLowerCase();
-  let filtered = all;
+  let filtered = companyBeneficiaries;
   if (q) {
-    filtered = all.filter(
+    filtered = companyBeneficiaries.filter(
       (b) =>
         b.name.toLowerCase().includes(q) ||
         (b.nickname && b.nickname.toLowerCase().includes(q))
@@ -1601,16 +1664,25 @@ function searchLocalBeneficiaries(query: string, limit = 8): BeneficiaryRecord[]
 function getLocalPaginatedBeneficiaries(params: GetBeneficiariesParams): BeneficiaryPaginatedResult {
   const { page, pageSize, searchQuery = "" } = params;
   const all = getLocalBeneficiaries();
+  const targetCompanyId = params.companyId || getActiveCompanyId();
+
+  // Filtrer strictement par entreprise active
+  const companyBeneficiaries = all.filter((b) => {
+    if (targetCompanyId === "company-default") {
+      return !b.companyId || b.companyId === "company-default";
+    }
+    return b.companyId === targetCompanyId;
+  });
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = q
-    ? all.filter(
+    ? companyBeneficiaries.filter(
         (b) =>
           b.name.toLowerCase().includes(q) ||
           (b.nickname && b.nickname.toLowerCase().includes(q)) ||
           (b.note && b.note.toLowerCase().includes(q))
       )
-    : all;
+    : companyBeneficiaries;
 
   filtered.sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
 
@@ -1620,7 +1692,7 @@ function getLocalPaginatedBeneficiaries(params: GetBeneficiariesParams): Benefic
   const start = (validPage - 1) * pageSize;
   const items = filtered.slice(start, start + pageSize);
 
-  const mostUsed = all.reduce<BeneficiaryRecord | null>((acc, curr) => {
+  const mostUsed = companyBeneficiaries.reduce<BeneficiaryRecord | null>((acc, curr) => {
     if (!acc || (curr.usageCount || 0) > (acc.usageCount || 0)) return curr;
     return acc;
   }, null);
@@ -1632,9 +1704,9 @@ function getLocalPaginatedBeneficiaries(params: GetBeneficiariesParams): Benefic
     currentPage: validPage,
     pageSize,
     stats: {
-      totalCount: all.length,
+      totalCount,
       mostUsedName: mostUsed ? mostUsed.name : "—",
-      mostUsedCount: mostUsed ? mostUsed.usageCount : 0
+      mostUsedCount: mostUsed ? mostUsed.usageCount || 0 : 0
     }
   };
 }
@@ -2569,6 +2641,62 @@ export async function incrementChequeBookNumber(bookId: string): Promise<string 
     console.warn("Erreur incrementChequeBookNumber SQLite:", err);
     return null;
   }
+}
+
+export interface AccountChequesSummary {
+  chequesCount: number;
+  totalAmount: number;
+}
+
+/**
+ * Calcule le nombre et le montant total des chèques émis depuis un compte bancaire donné
+ */
+export async function getAccountChequesSummary(accountId: string): Promise<AccountChequesSummary> {
+  const db = await getDatabase();
+  if (!db) {
+    const list = getLocalRecords().filter((c) => c.accountId === accountId && c.status !== "annule");
+    const totalAmount = list.reduce(
+      (sum, c) => sum + (parseFloat((c.amount || "0").replace(/\s/g, "").replace(",", ".")) || 0),
+      0
+    );
+    return { chequesCount: list.length, totalAmount };
+  }
+
+  try {
+    const rows = await db.select<{ count: number; total: number }[]>(
+      `SELECT COUNT(*) as count, COALESCE(SUM(amount_numeric), 0) as total FROM cheques WHERE account_id = ? AND status != 'annule';`,
+      [accountId]
+    );
+    return {
+      chequesCount: rows[0]?.count || 0,
+      totalAmount: rows[0]?.total || 0
+    };
+  } catch (err) {
+    console.warn("Erreur getAccountChequesSummary SQLite:", err);
+    return { chequesCount: 0, totalAmount: 0 };
+  }
+}
+
+/**
+ * Met à jour le solde d'un compte bancaire
+ */
+export async function updateAccountBalance(accountId: string, amountChange: number): Promise<void> {
+  const db = await getDatabase();
+  if (db) {
+    await db.execute(
+      `UPDATE bank_accounts SET balance = balance + ?, updated_at = ? WHERE id = ?;`,
+      [amountChange, new Date().toISOString(), accountId]
+    );
+  }
+}
+
+/**
+ * Récupère le carnet de chèques actif associé à un compte bancaire
+ */
+export async function getActiveChequeBookForAccount(accountId: string): Promise<ChequeBookRecord | null> {
+  const books = await getChequeBooks(accountId);
+  const active = books.find((b) => b.isActive && b.leavesUsed < b.leavesTotal);
+  return active || books[0] || null;
 }
 
 /* ==========================================================================

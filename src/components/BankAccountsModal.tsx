@@ -20,7 +20,9 @@ import {
   deleteBankAccount,
   getChequeBooks,
   saveChequeBook,
-  getActiveCompanyId
+  getActiveCompanyId,
+  getAccountChequesSummary,
+  type AccountChequesSummary
 } from "../services/db";
 
 interface BankAccountsModalProps {
@@ -39,6 +41,7 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
   const [accounts, setAccounts] = useState<BankAccountRecord[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [chequeBooks, setChequeBooks] = useState<ChequeBookRecord[]>([]);
+  const [accountSummary, setAccountSummary] = useState<AccountChequesSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Edit / Add account state
@@ -96,8 +99,12 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
   useEffect(() => {
     if (selectedAccountId) {
       loadChequeBooksForAccount(selectedAccountId);
+      getAccountChequesSummary(selectedAccountId)
+        .then(setAccountSummary)
+        .catch(() => setAccountSummary(null));
     } else {
       setChequeBooks([]);
+      setAccountSummary(null);
     }
   }, [selectedAccountId]);
 
@@ -453,6 +460,31 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                       <span>Utiliser pour ce chèque</span>
                     </button>
                   )}
+                </div>
+
+                {/* Cartes de synthèse du compte */}
+                <div className="account-summary-cards">
+                  <div className="acc-stat-box">
+                    <span className="acc-stat-label">Solde comptable</span>
+                    <strong className="acc-stat-value gold">
+                      {selectedAccount.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
+                    </strong>
+                  </div>
+                  <div className="acc-stat-box">
+                    <span className="acc-stat-label">Chèques émis</span>
+                    <strong className="acc-stat-value">
+                      {accountSummary ? accountSummary.chequesCount : 0}
+                    </strong>
+                  </div>
+                  <div className="acc-stat-box">
+                    <span className="acc-stat-label">Total décaissé</span>
+                    <strong className="acc-stat-value">
+                      {accountSummary
+                        ? accountSummary.totalAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })
+                        : "0,00"}{" "}
+                      DA
+                    </strong>
+                  </div>
                 </div>
 
                 {/* Section Chéquiers rattachés */}

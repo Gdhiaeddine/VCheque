@@ -2677,19 +2677,26 @@ button {
 .btn-create-template {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background-color: var(--gold-primary);
-  color: #ffffff;
-  border-radius: var(--radius-xs);
-  font-weight: 600;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 20px;
+  border-radius: var(--radius-sm);
   font-size: 12.5px;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #12614a, #0a3d2e);
+  border: 1px solid #147257;
+  box-shadow: 0 2px 6px rgba(18, 97, 74, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  cursor: pointer;
   transition: all var(--transition-fast);
   white-space: nowrap;
 }
 
 .btn-create-template:hover {
-  background-color: var(--gold-dark);
+  background: linear-gradient(135deg, #0e523e, #082f23);
+  border-color: #1a8f6d;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(18, 97, 74, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 /* Grille du catalogue des modèles */
@@ -8351,6 +8358,43 @@ button {
   cursor: pointer;
 }
 
+.account-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+  margin-bottom: 20px;
+}
+
+.acc-stat-box {
+  background: #fdfbf7;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.acc-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.acc-stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+}
+
+.acc-stat-value.gold {
+  color: var(--gold-dark);
+}
+
 .chequebooks-section {
   margin-top: 24px;
   padding-top: 20px;
@@ -8812,6 +8856,148 @@ button {
   border-radius: 4px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   transition: transform 0.15s ease;
+}
+
+/* ==========================================================================
+   BANDEAU COMPTE ÉMETTEUR ET CHÉQUIER (ACCUEIL & SAISIE)
+   ========================================================================== */
+.issuing-account-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background-color: #faf6ed;
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.issuing-account-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 260px;
+}
+
+.issuing-label-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.issuing-label-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.issuing-account-select {
+  flex: 1;
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.issuing-account-select:hover,
+.issuing-account-select:focus {
+  border-color: var(--gold-primary);
+}
+
+.issuing-chequebook-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #ffffff;
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius-xs);
+  padding: 4px 10px;
+  font-size: 11.5px;
+  color: var(--text-primary);
+}
+
+.chequebook-num-badge {
+  font-family: var(--font-mono);
+  background-color: var(--bg-secondary);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 700;
+  color: var(--gold-dark);
+}
+
+.chequebook-leaves-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #166534;
+  background-color: #dcfce7;
+  padding: 1px 7px;
+  border-radius: 99px;
+}
+
+.issuing-add-chequebook-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ffffff;
+  border: 1px dashed var(--gold-border);
+  border-radius: var(--radius-xs);
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gold-dark);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.issuing-add-chequebook-btn:hover {
+  background-color: #fdfbf7;
+  border-color: var(--gold-primary);
+}
+
+.btn-sync-chequebook {
+  background: #ffffff;
+  border: 1px solid var(--gold-border);
+  color: var(--gold-dark);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-sync-chequebook:hover {
+  background: var(--bg-secondary);
+  border-color: var(--gold-primary);
+}
+
+.ht-account-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .fullscreen-iframe {

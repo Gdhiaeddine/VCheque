@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { TopBar } from "./components/TopBar";
 import { Sidebar, type NavTab } from "./components/Sidebar";
 import { CheckForm } from "./components/CheckForm";
@@ -12,14 +12,25 @@ import { CalibrationPanel } from "./components/CalibrationPanel";
 import { ActionBar } from "./components/ActionBar";
 import { amountInFrenchWords, splitWordsByLimit, formatNumericAmount } from "./moneyToWords";
 import { defaultBankTemplates, defaultPositions } from "./banksData";
-import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, ChequeStatus, AppSettings, PrintAttemptRecord, CompanyRecord, BankAccountRecord } from "./types";
+import type { BankTemplate, FieldKey, PrintSettings, ChequeRecord, ChequeStatus, AppSettings, PrintAttemptRecord, CompanyRecord, BankAccountRecord, ChequeBookRecord } from "./types";
 import { PrintModal, getPaperDimensions, calculateChequePosition } from "./components/PrintModal";
 import { PrintConfirmationModal } from "./components/PrintConfirmationModal";
 import { ExportPdfModal } from "./components/ExportPdfModal";
 import { SplashScreen } from "./components/SplashScreen";
 import { CompanyManagerModal } from "./components/CompanyManagerModal";
 import { BankAccountsModal } from "./components/BankAccountsModal";
-import { saveChequeRecord, findDuplicateCheque, autoRecordBeneficiary, logPrintAttempt, updatePrintAttemptStatus, getActiveCompany } from "./services/db";
+import {
+  saveChequeRecord,
+  findDuplicateCheque,
+  autoRecordBeneficiary,
+  logPrintAttempt,
+  updatePrintAttemptStatus,
+  getActiveCompany,
+  getBankAccounts,
+  getActiveChequeBookForAccount,
+  incrementChequeBookNumber,
+  updateAccountBalance
+} from "./services/db";
 import { loadTemplatesFromConfigFile, saveTemplatesToConfigFile, LOCAL_TEMPLATES_KEY } from "./services/templatesConfig";
 import { loadAppSettings, saveAppSettings, resetAppSettings } from "./services/appSettings";
 import { exportChequeToPdf } from "./services/pdfExport";
@@ -204,35 +215,32 @@ export default function App() {
   const [activeCompany, setActiveCompany] = useState<CompanyRecord | null>(null);
   const [showCompanyModal, setShowCompanyModal] = useState<boolean>(false);
   const [showBankAccountsModal, setShowBankAccountsModal] = useState<boolean>(false);
+  const [companyAccounts, setCompanyAccounts] = useState<BankAccountRecord[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [activeChequeBook, setActiveChequeBook] = useState<ChequeBookRecord | null>(null);
 
   // 6. Feedback / Toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null);
 
-  // Persist history
-  useEffect(() => {
+  // Charger les comptes bancaires et chéquiers de l'entreprise
+  const loadCompanyAccounts = useCallback(async (companyId: string) => {
     try {
-      localStorage.setItem(HISTORIQUE_STORAGE_KEY, JSON.stringify(history));
-    } catch {}
-  }, [history]);
-
-  // Persist print settings
-  useEffect(() => {
-    try {
-      localStorage.setItem(PRINT_SETTINGS_KEY, JSON.stringify(printSettings));
-    } catch {}
-  }, [printSettings]);
-
-  // Load templates from external JSON configuration file on startup
-  useEffect(() => {
-    loadTemplatesFromConfigFile()
-      .then((loaded) => {
-        if (loaded && loaded.length > 0) {
-          setTemplates(loaded);
-        }
-      })
-      .catch((err) => console.error("Erreur chargement modèles config:", err))
-      .finally(() => setInitReady(true));
+      const list = await getBankAccounts(companyId);
+      setCompanyAccounts(list);
+      if (list.length > 0) {
+        setSelectedAccountId((prev) => {
+          const exists = list.some((a) => a.id === prev);
+          if (exists && prev) return prev;
+          const def = list.find((a) => a.isDefault) || list[0];
+          return def.id;
+        });
+      } else {
+        setSelectedAccountId(null);
+        setActiveChequeBook(null);
+      }
+    } catch (err) {
+      console.warn("Erreur chargement comptes bancaires entreprise:", err);
+    }
   }, []);
 
   // Multi-sociétés : chargement de l'entreprise active et écoute des changements de dossier
@@ -241,6 +249,9 @@ export default function App() {
       try {
         const comp = await getActiveCompany();
         setActiveCompany(comp);
+        if (comp) {
+          loadCompanyAccounts(comp.id);
+        }
       } catch (err) {
         console.warn("Erreur chargement active company:", err);
       }
@@ -254,7 +265,32 @@ export default function App() {
 
     window.addEventListener("vcheque:company-changed", handleCompanyChanged);
     return () => window.removeEventListener("vcheque:company-changed", handleCompanyChanged);
-  }, []);
+  }, [loadCompanyAccounts]);
+
+  // Synchronisation du chéquier actif et du modèle bancaire lors du changement de compte sélectionné
+  useEffect(() => {
+    if (selectedAccountId) {
+      getActiveChequeBookForAccount(selectedAccountId)
+        .then((book) => {
+          setActiveChequeBook(book);
+          if (book && book.currentNumber) {
+            setChequeNumber((prev) => (prev.trim() === "" ? book.currentNumber : prev));
+            setShowChequeNumber(true);
+          }
+        })
+        .catch(console.warn);
+
+      const acc = companyAccounts.find((a) => a.id === selectedAccountId);
+      if (acc && acc.bankTemplateId) {
+        const tplExists = templates.some((t) => t.id === acc.bankTemplateId);
+        if (tplExists) {
+          setSelectedTemplateId(acc.bankTemplateId);
+        }
+      }
+    } else {
+      setActiveChequeBook(null);
+    }
+  }, [selectedAccountId, companyAccounts, templates]);
 
   // Persist templates to external JSON configuration file (not db) so user can copy and backup
   useEffect(() => {
@@ -414,8 +450,13 @@ export default function App() {
     setDate(new Date().toISOString().split("T")[0]);
     setIsCrossed(appSettings.defaultIsCrossed !== false);
     setCrossedWithText(appSettings.defaultCrossedWithText !== false);
-    setShowChequeNumber(appSettings.defaultShowChequeNumber ?? false);
-    setChequeNumber("");
+    if (activeChequeBook && activeChequeBook.currentNumber) {
+      setChequeNumber(activeChequeBook.currentNumber);
+      setShowChequeNumber(true);
+    } else {
+      setChequeNumber("");
+      setShowChequeNumber(appSettings.defaultShowChequeNumber ?? false);
+    }
     setActiveChequeId(null);
     setActiveChequeStatus(null);
     setActivePrintCount(0);
@@ -447,6 +488,7 @@ export default function App() {
       id: recordId,
       companyId: activeCompany?.id || "company-default",
       accountId: selectedAccountId || undefined,
+      chequeBookId: activeChequeBook?.id || undefined,
       amount,
       beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
       place: place.trim() || "Alger",
@@ -467,7 +509,7 @@ export default function App() {
 
     saveChequeRecord(newRecord).catch(console.error);
     if (newRecord.beneficiary && newRecord.beneficiary !== "Bénéficiaire non spécifié") {
-      autoRecordBeneficiary(newRecord.beneficiary).catch(console.error);
+      autoRecordBeneficiary(newRecord.beneficiary, activeCompany?.id).catch(console.error);
     }
     setActiveChequeId(recordId);
     setActiveChequeStatus(newRecord.status);
@@ -630,6 +672,9 @@ export default function App() {
     if (!existingRecord) {
       const draftRecord: ChequeRecord = {
         id: recordId,
+        companyId: activeCompany?.id || "company-default",
+        accountId: selectedAccountId || undefined,
+        chequeBookId: activeChequeBook?.id || undefined,
         amount,
         beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
         place: place.trim() || "Alger",
@@ -687,6 +732,9 @@ export default function App() {
     const existingRecord = history.find((h) => h.id === recordId);
     const printedRecord: ChequeRecord = {
       id: recordId,
+      companyId: activeCompany?.id || "company-default",
+      accountId: selectedAccountId || undefined,
+      chequeBookId: activeChequeBook?.id || undefined,
       amount,
       beneficiary: beneficiary.trim() || "Bénéficiaire non spécifié",
       place: place.trim() || "Alger",
@@ -707,7 +755,24 @@ export default function App() {
 
     await saveChequeRecord(printedRecord);
     if (printedRecord.beneficiary && printedRecord.beneficiary !== "Bénéficiaire non spécifié") {
-      autoRecordBeneficiary(printedRecord.beneficiary).catch(console.error);
+      autoRecordBeneficiary(printedRecord.beneficiary, activeCompany?.id).catch(console.error);
+    }
+
+    // Incrémenter automatiquement le carnet de chèques actif de l'entreprise
+    if (activeChequeBook && activeChequeBook.id) {
+      try {
+        await incrementChequeBookNumber(activeChequeBook.id);
+        const updated = await getActiveChequeBookForAccount(activeChequeBook.accountId);
+        setActiveChequeBook(updated);
+        if (updated && updated.currentNumber) {
+          setChequeNumber(updated.currentNumber);
+        }
+        if (activeCompany) {
+          loadCompanyAccounts(activeCompany.id);
+        }
+      } catch (bookErr) {
+        console.warn("Erreur avancement chéquier:", bookErr);
+      }
     }
 
     setActiveChequeId(recordId);
@@ -919,6 +984,7 @@ export default function App() {
             history={history}
             templates={templates}
             refreshTrigger={historyRefreshTrigger}
+            activeCompanyId={activeCompany?.id}
             onCloneToHome={handleCloneToHome}
             onReprintCheque={handleReprintFromHistory}
             onDeleteRecord={handleDeleteHistoryRecord}
@@ -927,6 +993,8 @@ export default function App() {
           />
         ) : activeTab === "beneficiaries" ? (
           <BeneficiariesPage
+            activeCompanyId={activeCompany?.id}
+            refreshTrigger={historyRefreshTrigger}
             onCreateChequeForBeneficiary={handleCreateChequeForBeneficiary}
             onBackToHome={() => setActiveTab("home")}
           />
@@ -1007,6 +1075,11 @@ export default function App() {
                   onChangeShowChequeNumber={setShowChequeNumber}
                   chequeNumber={chequeNumber}
                   onChangeChequeNumber={setChequeNumber}
+                  accounts={companyAccounts}
+                  selectedAccountId={selectedAccountId}
+                  onChangeSelectedAccountId={setSelectedAccountId}
+                  activeChequeBook={activeChequeBook}
+                  onOpenBankAccountsModal={() => setShowBankAccountsModal(true)}
                   onSubmit={handleSubmitForm}
                 />
 
@@ -1431,6 +1504,8 @@ export default function App() {
         onClose={() => setShowCompanyModal(false)}
         onCompanyChanged={(comp) => {
           setActiveCompany(comp);
+          loadCompanyAccounts(comp.id);
+          setHistoryRefreshTrigger((prev) => prev + 1);
           setToast({
             message: `Dossier actif basculé sur "${comp.name}".`,
             type: "info"

@@ -30,6 +30,7 @@ import {
   deleteBeneficiaryRecord,
   clearAllBeneficiaryRecords,
   importBeneficiaries,
+  getActiveCompanyId,
   type BeneficiaryStats
 } from "../services/db";
 import {
@@ -41,11 +42,15 @@ import { BeneficiaryStatementModal } from "./BeneficiaryStatementModal";
 interface BeneficiariesPageProps {
   onCreateChequeForBeneficiary: (beneficiaryName: string) => void;
   onBackToHome: () => void;
+  refreshTrigger?: number;
+  activeCompanyId?: string;
 }
 
 export const BeneficiariesPage: React.FC<BeneficiariesPageProps> = ({
   onCreateChequeForBeneficiary,
-  onBackToHome
+  onBackToHome,
+  refreshTrigger = 0,
+  activeCompanyId
 }) => {
   // Query & filter states
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -115,6 +120,7 @@ export const BeneficiariesPage: React.FC<BeneficiariesPageProps> = ({
       const res = await getPaginatedBeneficiaries({
         page: currentPage,
         pageSize,
+        companyId: activeCompanyId || getActiveCompanyId(),
         searchQuery: debouncedSearch
       });
 
@@ -127,11 +133,21 @@ export const BeneficiariesPage: React.FC<BeneficiariesPageProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, pageSize, debouncedSearch]);
+  }, [currentPage, pageSize, debouncedSearch, activeCompanyId]);
+
+  // Écouter les bascules de société pour recharger instantanément
+  useEffect(() => {
+    const handleCompanyChange = () => {
+      setCurrentPage(1);
+      fetchRecords();
+    };
+    window.addEventListener("vcheque:company-changed", handleCompanyChange);
+    return () => window.removeEventListener("vcheque:company-changed", handleCompanyChange);
+  }, [fetchRecords]);
 
   useEffect(() => {
     fetchRecords();
-  }, [fetchRecords]);
+  }, [fetchRecords, refreshTrigger, activeCompanyId]);
 
   // Open modal for new beneficiary
   const handleOpenNewModal = () => {
@@ -168,8 +184,10 @@ export const BeneficiariesPage: React.FC<BeneficiariesPageProps> = ({
 
     try {
       const now = new Date().toISOString();
+      const targetCoId = activeCompanyId || getActiveCompanyId();
       const recordToSave: BeneficiaryRecord = {
         id: editingRecord ? editingRecord.id : `benef-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        companyId: editingRecord?.companyId || targetCoId,
         name: trimmedName,
         nickname: formNickname.trim() || undefined,
         phone: formPhone.trim() || undefined,
@@ -210,7 +228,7 @@ export const BeneficiariesPage: React.FC<BeneficiariesPageProps> = ({
   const handleExecuteExport = async () => {
     try {
       setIsExporting(true);
-      const all = await getAllBeneficiaries();
+      const all = await getAllBeneficiaries(activeCompanyId || getActiveCompanyId());
       const dateTag = new Date().toISOString().split("T")[0];
       const defaultFilename = customExportFilename.trim() || `beneficiaires-${dateTag}.${selectedExportFormat === "excel" ? "xls" : "csv"}`;
 
@@ -286,7 +304,7 @@ export const BeneficiariesPage: React.FC<BeneficiariesPageProps> = ({
   const handleExecuteImport = async () => {
     if (importParsedItems.length === 0) return;
     try {
-      const result = await importBeneficiaries(importParsedItems, importMode);
+      const result = await importBeneficiaries(importParsedItems, importMode, activeCompanyId || getActiveCompanyId());
       setImportReport(`Importation réussie : ${result.addedCount} ajoutés, ${result.updatedCount} mis à jour.`);
       await fetchRecords();
       setTimeout(() => {

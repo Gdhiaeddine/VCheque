@@ -31,9 +31,10 @@ import {
   Filter,
   PlusCircle,
   Save,
-  Paperclip
+  Paperclip,
+  CreditCard
 } from "lucide-react";
-import type { ChequeRecord, ChequeStatus, BankTemplate, PrintAttemptRecord, PrintAttemptStatus, ChequeAuditEvent, ChequeAuditEventType } from "../types";
+import type { ChequeRecord, ChequeStatus, BankTemplate, PrintAttemptRecord, PrintAttemptStatus, ChequeAuditEvent, ChequeAuditEventType, BankAccountRecord } from "../types";
 import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
 import { exportChequeToPdf } from "../services/pdfExport";
 import { defaultBankTemplates } from "../banksData";
@@ -49,6 +50,8 @@ import {
   deletePrintAttempt,
   clearPrintLogs,
   getChequeFullAuditTimeline,
+  getBankAccounts,
+  getActiveCompanyId,
   type HistoryStats
 } from "../services/db";
 import { exportChequesToCsv, exportChequesToExcel, exportChequesToPdf as exportFilteredChequesToPdf, STATUS_LABELS } from "../services/exportReports";
@@ -62,6 +65,7 @@ interface HistoryPageProps {
   onClearHistory?: () => void;
   onBackToHome: () => void;
   refreshTrigger?: number;
+  activeCompanyId?: string;
 }
 
 export const HistoryPage: React.FC<HistoryPageProps> = ({
@@ -71,13 +75,16 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   onDeleteRecord,
   onClearHistory,
   onBackToHome,
-  refreshTrigger = 0
+  refreshTrigger = 0,
+  activeCompanyId
 }) => {
   // Query & Filters state
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"all" | ChequeStatus>("all");
   const [bankFilter, setBankFilter] = useState<string>("all");
+  const [accountFilter, setAccountFilter] = useState<string>("all");
+  const [companyAccounts, setCompanyAccounts] = useState<BankAccountRecord[]>([]);
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
@@ -157,6 +164,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     setDebouncedSearch("");
     setStatusFilter("all");
     setBankFilter("all");
+    setAccountFilter("all");
     setStartDate("");
     setEndDate("");
     setAdvChequeNumber("");
@@ -167,6 +175,20 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     setCurrentPage(1);
   };
 
+  // Charger les comptes bancaires de l'entreprise active pour le filtre et l'affichage
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        const activeCoId = activeCompanyId || getActiveCompanyId();
+        const accs = await getBankAccounts(activeCoId);
+        setCompanyAccounts(accs);
+      } catch (e) {
+        console.warn("Erreur chargement comptes bancaires pour historique:", e);
+      }
+    };
+    loadAccounts();
+  }, [refreshTrigger, activeCompanyId]);
+
   // Charger les données paginées depuis SQLite / service db
   const fetchRecords = useCallback(async () => {
     setIsLoading(true);
@@ -174,9 +196,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
       const res = await getPaginatedCheques({
         page: currentPage,
         pageSize,
+        companyId: activeCompanyId || getActiveCompanyId(),
         searchQuery: debouncedSearch,
         statusFilter,
         bankFilter,
+        accountId: accountFilter !== "all" ? accountFilter : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         chequeNumber: advChequeNumber || undefined,
@@ -201,13 +225,15 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     debouncedSearch,
     statusFilter,
     bankFilter,
+    accountFilter,
     startDate,
     endDate,
     advChequeNumber,
     advReference,
     advBeneficiary,
     advMinAmount,
-    advMaxAmount
+    advMaxAmount,
+    activeCompanyId
   ]);
 
   const fetchPrintLogs = useCallback(async () => {
@@ -219,11 +245,25 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     }
   }, []);
 
+  // Écouter les bascules de société pour recharger instantanément
+  useEffect(() => {
+    const handleCompanyChange = () => {
+      setCurrentPage(1);
+      setAccountFilter("all");
+      fetchRecords();
+      fetchPrintLogs();
+      const activeCoId = activeCompanyId || getActiveCompanyId();
+      getBankAccounts(activeCoId).then(setCompanyAccounts).catch(console.warn);
+    };
+    window.addEventListener("vcheque:company-changed", handleCompanyChange);
+    return () => window.removeEventListener("vcheque:company-changed", handleCompanyChange);
+  }, [fetchRecords, fetchPrintLogs, activeCompanyId]);
+
   // Déclencher le chargement
   useEffect(() => {
     fetchRecords();
     fetchPrintLogs();
-  }, [fetchRecords, fetchPrintLogs, refreshTrigger]);
+  }, [fetchRecords, fetchPrintLogs, refreshTrigger, activeCompanyId]);
 
   const handleCancelChequeConfirm = async () => {
     if (!chequeToCancel) return;
@@ -257,6 +297,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
       searchQuery: searchQuery.trim() || debouncedSearch.trim() || undefined,
       statusFilter,
       bankFilter,
+      companyId: activeCompanyId || getActiveCompanyId(),
+      accountId: accountFilter !== "all" ? accountFilter : undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       chequeNumber: advChequeNumber.trim() || undefined,
@@ -275,6 +317,10 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     if (bankFilter && bankFilter !== "all") {
       const tpl = templates.find((t) => t.id === bankFilter);
       parts.push(`Banque : ${tpl ? tpl.shortName || tpl.name : bankFilter}`);
+    }
+    if (accountFilter && accountFilter !== "all") {
+      const acc = companyAccounts.find((a) => a.id === accountFilter);
+      parts.push(`Compte émetteur : ${acc ? acc.label : accountFilter}`);
     }
     if (startDate && endDate) {
       parts.push(`Période : du ${formatDate(startDate)} au ${formatDate(endDate)}`);
@@ -777,6 +823,29 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                 </select>
               </div>
 
+              {/* Filtre de Compte bancaire émetteur */}
+              {companyAccounts.length > 0 && (
+                <div className="filter-group-dropdown">
+                  <CreditCard size={14} className="filter-field-icon" />
+                  <select
+                    value={accountFilter}
+                    onChange={(e) => {
+                      setAccountFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="history-select-dropdown"
+                    title="Filtrer par compte bancaire émetteur"
+                  >
+                    <option value="all">Tous les comptes ({companyAccounts.length})</option>
+                    {companyAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.label} {acc.ribOrIban ? `(${acc.ribOrIban.slice(-6)})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Filtre de Période (même style) */}
               <div className="filter-group-dropdown date-group">
                 <Calendar size={14} className="filter-field-icon" />
@@ -836,6 +905,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
               {/* Réinitialiser filtres */}
               {(statusFilter !== "all" ||
                 bankFilter !== "all" ||
+                accountFilter !== "all" ||
                 startDate ||
                 endDate ||
                 advChequeNumber ||
@@ -1075,6 +1145,19 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                       <Building2 size={13} />
                       <span>{item.bankName}</span>
                     </span>
+                    {(() => {
+                      const acc = item.accountId ? companyAccounts.find((a) => a.id === item.accountId) : null;
+                      if (!acc) return null;
+                      return (
+                        <span
+                          className="ht-account-badge"
+                          title={`Compte émetteur : ${acc.label} (${item.bankName}) - RIB: ${acc.ribOrIban || "—"}`}
+                        >
+                          <CreditCard size={10} />
+                          <span>{acc.label}</span>
+                        </span>
+                      );
+                    })()}
                   </td>
 
                   <td className="ht-col-actions">
