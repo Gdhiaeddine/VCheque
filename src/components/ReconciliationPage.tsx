@@ -20,7 +20,9 @@ import {
   FileDown,
   Building2,
   Layers,
-  X
+  X,
+  User,
+  Calendar
 } from "lucide-react";
 import type {
   ChequeRecord,
@@ -84,6 +86,9 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
   const [lineFilter, setLineFilter] = useState<"all" | "unmatched" | "matched">("all");
   const [searchCheque, setSearchCheque] = useState<string>("");
   const [searchLine, setSearchLine] = useState<string>("");
+  const [beneficiaryFilter, setBeneficiaryFilter] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
 
   // Modales
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
@@ -194,6 +199,8 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
 
   // Chèques filtrés
   const filteredCheques = useMemo(() => {
+    const benQuery = beneficiaryFilter.trim().toLowerCase();
+
     return cheques.filter((c) => {
       if (c.status === "annule") return false;
       if (selectedAccountId !== "all" && c.accountId && c.accountId !== selectedAccountId) return false;
@@ -202,7 +209,14 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
       if (chequeFilter === "circulation" && (c.reconciledLineId || c.status === "encaisse")) return false;
       if (chequeFilter === "reconciled" && !c.reconciledLineId && c.status !== "encaisse") return false;
 
-      // Filtre recherche
+      // Filtre par date
+      if (startDate && c.date && c.date < startDate) return false;
+      if (endDate && c.date && c.date > endDate) return false;
+
+      // Filtre dédié bénéficiaire
+      if (benQuery && !c.beneficiary?.toLowerCase().includes(benQuery)) return false;
+
+      // Filtre recherche générale
       if (searchCheque.trim()) {
         const q = searchCheque.toLowerCase();
         const matchesBen = c.beneficiary?.toLowerCase().includes(q);
@@ -213,14 +227,31 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
 
       return true;
     });
-  }, [cheques, selectedAccountId, chequeFilter, searchCheque]);
+  }, [cheques, selectedAccountId, chequeFilter, searchCheque, startDate, endDate, beneficiaryFilter]);
 
   // Lignes de relevé filtrées
   const filteredLines = useMemo(() => {
+    const benQuery = beneficiaryFilter.trim().toLowerCase();
+
     return statementLines.filter((l) => {
       if (selectedAccountId !== "all" && l.accountId && l.accountId !== selectedAccountId) return false;
       if (lineFilter === "unmatched" && l.reconciliationStatus !== "unmatched") return false;
       if (lineFilter === "matched" && l.reconciliationStatus === "unmatched") return false;
+
+      // Filtre par date
+      if (startDate && l.operationDate && l.operationDate < startDate) return false;
+      if (endDate && l.operationDate && l.operationDate > endDate) return false;
+
+      // Filtre bénéficiaire (recherche dans le libellé bancaire ou chèque lettré)
+      if (benQuery) {
+        const matchesLabel = l.label?.toLowerCase().includes(benQuery);
+        let matchesMatched = false;
+        if (l.matchedChequeId) {
+          const mc = cheques.find((c) => c.id === l.matchedChequeId);
+          if (mc?.beneficiary?.toLowerCase().includes(benQuery)) matchesMatched = true;
+        }
+        if (!matchesLabel && !matchesMatched) return false;
+      }
 
       if (searchLine.trim()) {
         const q = searchLine.toLowerCase();
@@ -233,7 +264,7 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
 
       return true;
     });
-  }, [statementLines, selectedAccountId, lineFilter, searchLine]);
+  }, [statementLines, selectedAccountId, lineFilter, searchLine, startDate, endDate, beneficiaryFilter, cheques]);
 
   const activeAccount = accounts.find((a) => a.id === selectedAccountId);
   const selectedChequeObj = cheques.find((c) => c.id === selectedChequeId);
@@ -425,46 +456,120 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
         </div>
       </div>
 
-      {/* 3. Barre d'outils et de filtrage par compte émetteur */}
+      {/* 3. Barre d'outils et de filtrage unifiée (style identique à l'historique) */}
       <div className="history-toolbar-card">
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <CreditCard size={15} className="text-gold" />
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>
-              Compte bancaire :
-            </span>
-          </div>
-
-          <div className="filter-select-wrapper" style={{ minWidth: "260px" }}>
+        <div className="history-toolbar-unified-row">
+          {/* Filtre Compte bancaire émetteur */}
+          <div className="filter-group-dropdown">
+            <CreditCard size={14} className="filter-field-icon" />
             <select
-              className="history-filter-select"
+              className="history-select-dropdown"
               value={selectedAccountId}
               onChange={(e) => setSelectedAccountId(e.target.value)}
-              title="Filtrer les chèques et relevés par compte bancaire"
+              title="Filtrer par compte bancaire émetteur"
             >
-              <option value="all">Tous les comptes bancaires ({accounts.length})</option>
+              <option value="all">Tous les comptes ({accounts.length})</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.label} ({a.ribOrIban ? `...${a.ribOrIban.slice(-4)}` : "Sans RIB"})
+                  {a.label} {a.ribOrIban ? `(${a.ribOrIban.slice(-4)})` : ""}
                 </option>
               ))}
             </select>
           </div>
 
+          {/* Filtre Bénéficiaire */}
+          <div className="filter-group-dropdown" style={{ minWidth: "200px" }}>
+            <User size={14} className="filter-field-icon" />
+            <input
+              type="text"
+              className="history-filter-input"
+              placeholder="Bénéficiaire..."
+              value={beneficiaryFilter}
+              onChange={(e) => setBeneficiaryFilter(e.target.value)}
+              title="Filtrer par nom de bénéficiaire"
+            />
+            {beneficiaryFilter && (
+              <button
+                type="button"
+                className="btn-clear-dates"
+                onClick={() => setBeneficiaryFilter("")}
+                title="Effacer le filtre bénéficiaire"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          {/* Filtre de Période (Date début au Date fin) */}
+          <div className="filter-group-dropdown date-group">
+            <Calendar size={14} className="filter-field-icon" />
+            <div className="date-inputs-wrapper">
+              <input
+                type="date"
+                className="history-date-input"
+                title="Date d'opération de début"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+              <span className="date-separator">au</span>
+              <input
+                type="date"
+                className="history-date-input"
+                title="Date d'opération de fin"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+              {(startDate || endDate) && (
+                <button
+                  type="button"
+                  className="btn-clear-dates"
+                  onClick={() => {
+                    setStartDate("");
+                    setEndDate("");
+                  }}
+                  title="Effacer les dates"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Bouton Réinitialiser filtres */}
+          {(selectedAccountId !== "all" || beneficiaryFilter || startDate || endDate) && (
+            <button
+              type="button"
+              className="btn-reset-filters"
+              onClick={() => {
+                setSelectedAccountId("all");
+                setBeneficiaryFilter("");
+                setStartDate("");
+                setEndDate("");
+              }}
+              title="Réinitialiser tous les filtres"
+            >
+              <X size={13} />
+              <span>Réinitialiser</span>
+            </button>
+          )}
+
+          {/* Solde du compte bancaire actif */}
           {activeAccount && (
-            <span className="count-pill" style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+            <span
+              className="count-pill"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                marginLeft: "auto"
+              }}
+            >
               <span>Solde :</span>
               <strong style={{ color: "var(--gold-dark)" }}>
                 {activeAccount.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
               </strong>
             </span>
           )}
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
-            Cliquez sur un chèque et une opération bancaire pour les lettrer manuellement
-          </span>
         </div>
       </div>
 

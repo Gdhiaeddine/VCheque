@@ -4013,6 +4013,11 @@ button {
   border-color: #AC8946;
 }
 
+.filter-field-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 .history-select-dropdown,
 .history-select-bank {
   border: none;
@@ -4023,6 +4028,22 @@ button {
   cursor: pointer;
   outline: none;
   padding-right: 4px;
+}
+
+.history-filter-input {
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+  outline: none;
+  cursor: text;
+  width: 100%;
+}
+
+.history-filter-input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 .date-inputs-wrapper {
@@ -10438,6 +10459,27 @@ button {
 
 .lock-pin-wrapper {
   position: relative;
+}
+
+/* Suppression stricte du bouton oeil natif Edge / WebView2 pour éviter l'icône oeil en doublon */
+input::-ms-reveal,
+input::-ms-clear,
+.pin-field-input::-ms-reveal,
+.pin-field-input::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
+}
+
+input::-webkit-contacts-auto-fill-button,
+input::-webkit-credentials-auto-fill-button {
+  visibility: hidden !important;
+  display: none !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  width: 0 !important;
+  margin: 0 !important;
 }
 
 .lock-pin-wrapper .pin-field-input {
