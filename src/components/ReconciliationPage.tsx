@@ -10,15 +10,16 @@ import {
   CheckCircle2,
   Clock,
   ArrowRight,
-  Filter,
-  RefreshCw,
+  ArrowLeft,
+  RotateCcw,
   Search,
-  Layers,
   Link2,
   Unlink,
   ShieldCheck,
   FileText,
-  AlertTriangle,
+  FileDown,
+  Building2,
+  Layers,
   X
 } from "lucide-react";
 import type {
@@ -71,7 +72,7 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
 
   // Filtres
-  const [chequeFilter, setChequeFilter] = useState<"all" | "circulation" | "reconciled" | "discrepancy">("all");
+  const [chequeFilter, setChequeFilter] = useState<"all" | "circulation" | "reconciled">("all");
   const [lineFilter, setLineFilter] = useState<"all" | "unmatched" | "matched">("all");
   const [searchCheque, setSearchCheque] = useState<string>("");
   const [searchLine, setSearchLine] = useState<string>("");
@@ -166,7 +167,7 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
       if (selectedAccountId !== "all" && c.accountId && c.accountId !== selectedAccountId) return false;
 
       // Filtre statut
-      if (chequeFilter === "circulation" && c.status === "encaisse") return false;
+      if (chequeFilter === "circulation" && (c.reconciledLineId || c.status === "encaisse")) return false;
       if (chequeFilter === "reconciled" && !c.reconciledLineId && c.status !== "encaisse") return false;
 
       // Filtre recherche
@@ -202,227 +203,310 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
     });
   }, [statementLines, selectedAccountId, lineFilter, searchLine]);
 
+  const activeAccount = accounts.find((a) => a.id === selectedAccountId);
+  const selectedChequeObj = cheques.find((c) => c.id === selectedChequeId);
+  const selectedLineObj = statementLines.find((l) => l.id === selectedLineId);
+
   return (
-    <div className="reconciliation-page-container" style={{ padding: "20px 24px", height: "100%", display: "flex", flexDirection: "column", overflowY: "auto" }}>
-      {/* Toast de notification */}
+    <div className="history-page reconciliation-page">
+      {/* Toast de notification harmonisé */}
       {toastMessage && (
-        <div style={{ position: "fixed", bottom: "24px", right: "24px", background: "#065F46", color: "#FFF", padding: "12px 18px", borderRadius: "8px", boxShadow: "0 10px 25px rgba(0,0,0,0.15)", zIndex: 9999, display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" }}>
+        <div className="app-toast toast-success" role="status" style={{ zIndex: 9999 }}>
           <CheckCircle2 size={16} />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* 1. En-tête de la page */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "rgba(172, 137, 70, 0.12)", color: "var(--gold-dark)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <CheckCheck size={20} />
+      {/* 1. En-tête de la page harmonisé avec l'Historique et les Bénéficiaires */}
+      <div className="history-page-header">
+        {onBackToHome && (
+          <div className="header-breadcrumbs">
+            <button type="button" className="btn-back-crumb" onClick={onBackToHome}>
+              <ArrowLeft size={16} />
+              <span>Retour à l'accueil (Saisie)</span>
+            </button>
+          </div>
+        )}
+
+        <div className="header-main-title-row">
+          <div>
+            <div className="title-with-badge">
+              <h1 className="history-main-title">Rapprochement & Grand Livre Bancaire</h1>
+              <span className="count-pill">{analysis.summary.totalEmittedCount} chèques</span>
             </div>
-            <div>
-              <h1 style={{ fontSize: "20px", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
-                Rapprochement Bancaire & Grand Livre
-              </h1>
-              <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "2px 0 0 0" }}>
-                Comparaison assistée entre chèques émis et relevés bancaires · Gestion des écarts et traçabilité
-              </p>
-            </div>
+            <p className="history-main-subtitle">
+              Comparaison assistée entre chèques émis et relevés bancaires · Gestion des écarts, lettrage et exports comptables.
+            </p>
+          </div>
+
+          <div className="header-actions-group">
+            {/* Bouton Import Relevé en vert de luxe */}
+            <button
+              type="button"
+              className="btn-action-luxury-green"
+              onClick={() => setIsImportModalOpen(true)}
+              title="Importer un relevé bancaire (Excel, CSV, OFX)"
+            >
+              <Upload size={16} />
+              <span>Importer un relevé</span>
+            </button>
+
+            {/* Bouton Rapprochement Automatique */}
+            <button
+              type="button"
+              className="btn-action-card"
+              onClick={handleRunAutoReconcile}
+              title="Associer automatiquement les chèques et débits avec N° chèque et montant identiques"
+            >
+              <Sparkles size={16} className="btn-action-icon text-gold" />
+              <span>Rapprochement auto ({analysis.exactMatches.length})</span>
+            </button>
+
+            {/* Bouton Export Rapprochement */}
+            <button
+              type="button"
+              className="btn-action-card"
+              onClick={() => exportBankReconciliationToExcel(cheques, statementLines, accounts)}
+              title="Exporter l'état de rapprochement complet en Excel"
+            >
+              <FileDown size={16} className="btn-action-icon" />
+              <span>Export Rapprochement</span>
+            </button>
+
+            {/* Bouton Journal Comptable */}
+            <button
+              type="button"
+              className="btn-action-card"
+              onClick={() => exportAccountingJournalToExcel(cheques, accounts)}
+              title="Exporter le journal des écritures de trésorerie pour logiciel comptable (SCF)"
+            >
+              <FileSpreadsheet size={16} className="btn-action-icon text-emerald" />
+              <span>Journal comptable</span>
+            </button>
+
+            {/* Bouton Actualiser */}
+            <button
+              type="button"
+              className="btn-action-card"
+              onClick={loadData}
+              title="Actualiser les données"
+            >
+              <RotateCcw size={16} className="btn-action-icon" />
+              <span>Actualiser</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Cartes d'indicateurs financiers (KPIs) dans la grille standard */}
+      <div className="history-stats-grid reconciliation-stats-grid">
+        {/* Total Émis */}
+        <div className="history-stat-card">
+          <div className="stat-icon-wrapper gold">
+            <FileText size={18} />
+          </div>
+          <div className="stat-content">
+            <span className="stat-label">Chèques émis</span>
+            <strong className="stat-value">{analysis.summary.totalEmittedCount}</strong>
+            <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 600 }}>
+              {analysis.summary.totalEmittedAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
+            </span>
           </div>
         </div>
 
-        {/* Barre d'actions */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-          {/* Sélecteur de compte bancaire */}
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#FFF", border: "1px solid var(--border-color)", padding: "4px 10px", borderRadius: "8px" }}>
-            <CreditCard size={14} className="text-gold" />
+        {/* Lettrés / Encaissés */}
+        <div className="history-stat-card">
+          <div className="stat-icon-wrapper green">
+            <CheckCircle2 size={18} />
+          </div>
+          <div className="stat-content">
+            <span className="stat-label">Lettrés / Encaissés</span>
+            <strong className="stat-value">{analysis.summary.reconciledCount}</strong>
+            <span style={{ fontSize: "11px", color: "#166534", fontWeight: 600 }}>
+              {analysis.summary.reconciledAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
+            </span>
+          </div>
+        </div>
+
+        {/* Chèques en circulation (non débités) */}
+        <div className="history-stat-card">
+          <div className="stat-icon-wrapper amber">
+            <Clock size={18} />
+          </div>
+          <div className="stat-content">
+            <span className="stat-label">En circulation</span>
+            <strong className="stat-value">{analysis.summary.inCirculationCount}</strong>
+            <span style={{ fontSize: "11px", color: "#92400E", fontWeight: 600 }}>
+              {analysis.summary.inCirculationAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
+            </span>
+          </div>
+        </div>
+
+        {/* Débits non lettrés */}
+        <div className="history-stat-card cancelled-stat">
+          <div className="stat-icon-wrapper red">
+            <AlertCircle size={18} />
+          </div>
+          <div className="stat-content">
+            <span className="stat-label">Débits non lettrés</span>
+            <strong className="stat-value">{analysis.summary.unmatchedDebitsCount}</strong>
+            <span style={{ fontSize: "11px", color: "#991B1B", fontWeight: 600 }}>
+              {analysis.summary.unmatchedDebitsAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
+            </span>
+          </div>
+        </div>
+
+        {/* Taux de rapprochement */}
+        <div className="history-stat-card total-amount-card">
+          <div className="stat-icon-wrapper gold">
+            <ShieldCheck size={18} />
+          </div>
+          <div className="stat-content">
+            <span className="stat-label">Taux de lettrage</span>
+            <strong className="stat-value">{analysis.summary.reconciliationRate} %</strong>
+            <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+              {statements.length} relevé(s) chargé(s)
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Barre d'outils et de filtrage par compte émetteur */}
+      <div className="history-toolbar-card">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <CreditCard size={15} className="text-gold" />
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>
+              Compte bancaire :
+            </span>
+          </div>
+
+          <div className="filter-select-wrapper" style={{ minWidth: "260px" }}>
             <select
+              className="history-filter-select"
               value={selectedAccountId}
               onChange={(e) => setSelectedAccountId(e.target.value)}
-              style={{ border: "none", background: "transparent", fontSize: "12px", color: "var(--text-primary)", outline: "none", fontWeight: 600 }}
+              title="Filtrer les chèques et relevés par compte bancaire"
             >
               <option value="all">Tous les comptes bancaires ({accounts.length})</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.label}
+                  {a.label} ({a.ribOrIban ? `...${a.ribOrIban.slice(-4)}` : "Sans RIB"})
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Bouton Import Relevé */}
-          <button
-            type="button"
-            className="btn-action-luxury-green"
-            onClick={() => setIsImportModalOpen(true)}
-            style={{ padding: "7px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
-          >
-            <Upload size={14} />
-            <span>Importer un relevé</span>
-          </button>
-
-          {/* Bouton Rapprochement Automatique */}
-          <button
-            type="button"
-            className="btn-action-card"
-            onClick={handleRunAutoReconcile}
-            style={{ padding: "7px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
-            title="Associer automatiquement les chèques et débits avec N° chèque et montant identiques"
-          >
-            <Sparkles size={14} className="text-gold" />
-            <span>Rapprochement auto ({analysis.exactMatches.length})</span>
-          </button>
-
-          {/* Bouton Export Excel */}
-          <button
-            type="button"
-            className="btn-action-card"
-            onClick={() => exportBankReconciliationToExcel(cheques, statementLines, accounts)}
-            style={{ padding: "7px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
-            title="Exporter l'état de rapprochement complet en Excel"
-          >
-            <Download size={14} />
-            <span>Export Rapprochement</span>
-          </button>
-
-          {/* Bouton Journal Comptable */}
-          <button
-            type="button"
-            className="btn-action-card"
-            onClick={() => exportAccountingJournalToExcel(cheques, accounts)}
-            style={{ padding: "7px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
-            title="Exporter le journal des écritures de trésorerie pour logiciel comptable"
-          >
-            <FileSpreadsheet size={14} />
-            <span>Journal Comptable</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. Cartes d'indicateurs financiers (KPIs) */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "18px" }}>
-        {/* Total Émis */}
-        <div style={{ background: "#FFF", padding: "12px 14px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
-          <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Chèques émis</span>
-          <strong style={{ fontSize: "16px", color: "var(--text-primary)", display: "block", marginTop: "2px" }}>
-            {analysis.summary.totalEmittedCount}
-          </strong>
-          <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 600 }}>
-            {analysis.summary.totalEmittedAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
-          </span>
-        </div>
-
-        {/* Lettrés / Encaissés */}
-        <div style={{ background: "#F0FDF4", padding: "12px 14px", borderRadius: "10px", border: "1px solid #BBF7D0" }}>
-          <span style={{ fontSize: "11px", color: "#166534", display: "block" }}>Lettrés / Encaissés</span>
-          <strong style={{ fontSize: "16px", color: "#15803D", display: "block", marginTop: "2px" }}>
-            {analysis.summary.reconciledCount}
-          </strong>
-          <span style={{ fontSize: "11px", color: "#166534", fontWeight: 600 }}>
-            {analysis.summary.reconciledAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
-          </span>
-        </div>
-
-        {/* Chèques en circulation (non débités) */}
-        <div style={{ background: "#FFFBEB", padding: "12px 14px", borderRadius: "10px", border: "1px solid #FDE68A" }}>
-          <span style={{ fontSize: "11px", color: "#92400E", display: "block" }}>En circulation (non débités)</span>
-          <strong style={{ fontSize: "16px", color: "#B45309", display: "block", marginTop: "2px" }}>
-            {analysis.summary.inCirculationCount}
-          </strong>
-          <span style={{ fontSize: "11px", color: "#92400E", fontWeight: 600 }}>
-            {analysis.summary.inCirculationAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
-          </span>
-        </div>
-
-        {/* Débits non lettrés */}
-        <div style={{ background: "#FEF2F2", padding: "12px 14px", borderRadius: "10px", border: "1px solid #FECACA" }}>
-          <span style={{ fontSize: "11px", color: "#991B1B", display: "block" }}>Débits bancaires non lettrés</span>
-          <strong style={{ fontSize: "16px", color: "#DC2626", display: "block", marginTop: "2px" }}>
-            {analysis.summary.unmatchedDebitsCount}
-          </strong>
-          <span style={{ fontSize: "11px", color: "#991B1B", fontWeight: 600 }}>
-            {analysis.summary.unmatchedDebitsAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
-          </span>
-        </div>
-
-        {/* Taux de rapprochement */}
-        <div style={{ background: "#F8FAFC", padding: "12px 14px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
-          <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Taux de rapprochement</span>
-          <strong style={{ fontSize: "16px", color: "var(--gold-dark)", display: "block", marginTop: "2px" }}>
-            {analysis.summary.reconciliationRate} %
-          </strong>
-          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-            {statements.length} relevé(s) chargé(s)
-          </span>
-        </div>
-      </div>
-
-      {/* Barre d'action de lettrage manuel rapide si deux éléments sont sélectionnés */}
-      {selectedChequeId && selectedLineId && (
-        <div style={{ background: "rgba(172, 137, 70, 0.12)", border: "1px solid var(--gold-primary)", borderRadius: "8px", padding: "10px 16px", marginBottom: "14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <Link2 size={16} className="text-gold" />
-            <span style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--text-primary)" }}>
-              1 chèque sélectionné et 1 opération bancaire sélectionnée
+          {activeAccount && (
+            <span className="count-pill" style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+              <span>Solde :</span>
+              <strong style={{ color: "var(--gold-dark)" }}>
+                {activeAccount.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
+              </strong>
             </span>
+          )}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
+            Cliquez sur un chèque et une opération bancaire pour les lettrer manuellement
+          </span>
+        </div>
+      </div>
+
+      {/* 4. Bandeau de lettrage manuel lorsqu'une paire est sélectionnée */}
+      {selectedChequeId && selectedLineId && selectedChequeObj && selectedLineObj && (
+        <div className="reconciliation-pair-banner">
+          <div className="reconciliation-pair-info">
+            <div className="pair-badge-group">
+              <span style={{ fontSize: "11.5px", fontWeight: 700, color: "var(--text-secondary)" }}>
+                Chèque sélectionné :
+              </span>
+              <div className="pair-badge-item">
+                <FileText size={13} style={{ color: "var(--gold-dark)" }} />
+                <span>N° {selectedChequeObj.chequeNumber || "—"}</span>
+                <span>·</span>
+                <strong>{selectedChequeObj.amount} DA</strong>
+                <span>({selectedChequeObj.beneficiary})</span>
+              </div>
+            </div>
+
+            <Link2 size={16} className="text-gold" />
+
+            <div className="pair-badge-group">
+              <span style={{ fontSize: "11.5px", fontWeight: 700, color: "var(--text-secondary)" }}>
+                Débit relevé :
+              </span>
+              <div className="pair-badge-item">
+                <CreditCard size={13} style={{ color: "#DC2626" }} />
+                <span>{selectedLineObj.operationDate}</span>
+                <span>·</span>
+                <strong style={{ color: "#DC2626" }}>
+                  {selectedLineObj.debit?.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DA
+                </strong>
+                <span>({selectedLineObj.label.slice(0, 30)})</span>
+              </div>
+            </div>
           </div>
+
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <button
               type="button"
-              className="btn-modal-cancel"
+              className="btn-action-card"
               onClick={() => {
                 setSelectedChequeId(null);
                 setSelectedLineId(null);
               }}
-              style={{ padding: "5px 12px", fontSize: "12px" }}
+              style={{ padding: "6px 12px", fontSize: "12px" }}
             >
-              Désélectionner
+              Annuler
             </button>
+
             <button
               type="button"
               className="btn-action-luxury-green"
               onClick={handleManualReconcilePair}
-              style={{ padding: "6px 14px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
+              style={{ padding: "6px 16px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
             >
-              <CheckCircle2 size={14} />
+              <CheckCircle2 size={15} />
               <span>Lettrer cette paire</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* 3. Double volet : Grand livre des chèques vs Relevé bancaire */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", flex: 1, minHeight: "450px" }}>
+      {/* 5. Double volet harmonisé : Grand livre des chèques vs Relevé bancaire */}
+      <div className="reconciliation-dual-pane">
         {/* Volet Gauche : Chèques émis */}
-        <div style={{ background: "#FFF", borderRadius: "10px", border: "1px solid var(--border-color)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {/* Header Volet Gauche */}
-          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)", background: "#F8FAFC" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>
-                Chèques émis ({filteredCheques.length})
-              </strong>
-              {/* Filtres de statut */}
-              <div style={{ display: "flex", gap: "4px" }}>
+        <div className="reconciliation-pane-card">
+          <div className="reconciliation-pane-header">
+            <div className="reconciliation-pane-title-row">
+              <div className="reconciliation-pane-title">
+                <FileText size={15} style={{ color: "var(--gold-dark)" }} />
+                <span>Chèques émis de l'entreprise</span>
+                <span className="count-pill">{filteredCheques.length}</span>
+              </div>
+
+              {/* Filtres de statut standard */}
+              <div className="history-filter-pills">
                 <button
                   type="button"
-                  className={`btn-filter-pill ${chequeFilter === "all" ? "active" : ""}`}
+                  className={`filter-pill ${chequeFilter === "all" ? "active" : ""}`}
                   onClick={() => setChequeFilter("all")}
-                  style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "99px", border: "1px solid var(--border-color)", background: chequeFilter === "all" ? "var(--bg-secondary)" : "#FFF", cursor: "pointer" }}
                 >
-                  Tous
+                  Tous ({cheques.length})
                 </button>
                 <button
                   type="button"
-                  className={`btn-filter-pill ${chequeFilter === "circulation" ? "active" : ""}`}
+                  className={`filter-pill ${chequeFilter === "circulation" ? "active" : ""}`}
                   onClick={() => setChequeFilter("circulation")}
-                  style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "99px", border: "1px solid #FDE68A", background: chequeFilter === "circulation" ? "#FEF3C7" : "#FFF", color: "#92400E", cursor: "pointer" }}
                 >
                   En circulation
                 </button>
                 <button
                   type="button"
-                  className={`btn-filter-pill ${chequeFilter === "reconciled" ? "active" : ""}`}
+                  className={`filter-pill ${chequeFilter === "reconciled" ? "active" : ""}`}
                   onClick={() => setChequeFilter("reconciled")}
-                  style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "99px", border: "1px solid #BBF7D0", background: chequeFilter === "reconciled" ? "#DCFCE7" : "#FFF", color: "#166534", cursor: "pointer" }}
                 >
                   Lettrés
                 </button>
@@ -430,144 +514,173 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
             </div>
 
             {/* Barre de recherche chèques */}
-            <div style={{ position: "relative" }}>
-              <Search size={14} style={{ position: "absolute", left: "10px", top: "8px", color: "var(--text-muted)" }} />
+            <div className="history-search-box">
+              <Search size={14} className="history-search-icon" />
               <input
                 type="text"
+                className="history-search-input"
                 placeholder="Rechercher par N° chèque, bénéficiaire ou montant..."
                 value={searchCheque}
                 onChange={(e) => setSearchCheque(e.target.value)}
-                style={{ width: "100%", padding: "6px 10px 6px 30px", borderRadius: "6px", border: "1px solid var(--border-color)", fontSize: "12px" }}
               />
+              {searchCheque && (
+                <button
+                  type="button"
+                  className="search-clear-btn"
+                  onClick={() => setSearchCheque("")}
+                  title="Effacer la recherche"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
           </div>
 
           {/* Table Chèques */}
-          <div style={{ flex: 1, overflowY: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11.5px" }}>
+          <div className="reconciliation-table-scroll">
+            <table className="history-table">
               <thead>
-                <tr style={{ background: "#F1F5F9", textAlign: "left", position: "sticky", top: 0, zIndex: 1 }}>
-                  <th style={{ padding: "6px 10px" }}>Date</th>
-                  <th style={{ padding: "6px 10px" }}>N° Chèque</th>
-                  <th style={{ padding: "6px 10px" }}>Bénéficiaire</th>
-                  <th style={{ padding: "6px 10px", textAlign: "right" }}>Montant (DA)</th>
-                  <th style={{ padding: "6px 10px", textAlign: "center" }}>Statut</th>
-                  <th style={{ padding: "6px 10px", textAlign: "center" }}>Action</th>
+                <tr>
+                  <th style={{ width: "90px" }}>Date</th>
+                  <th style={{ width: "95px" }}>N° Chèque</th>
+                  <th>Bénéficiaire</th>
+                  <th style={{ textAlign: "right", width: "120px" }}>Montant (DA)</th>
+                  <th style={{ textAlign: "center", width: "115px" }}>Statut</th>
+                  <th style={{ textAlign: "center", width: "50px" }}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredCheques.map((c) => {
-                  const isSelected = selectedChequeId === c.id;
-                  const isReconciled = Boolean(c.reconciledLineId);
-                  const isCashed = c.status === "encaisse";
+                {filteredCheques.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "30px 15px", color: "var(--text-muted)" }}>
+                      Aucun chèque ne correspond aux filtres actuels.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredCheques.map((c) => {
+                    const isSelected = selectedChequeId === c.id;
+                    const isReconciled = Boolean(c.reconciledLineId);
+                    const isCashed = c.status === "encaisse";
 
-                  return (
-                    <tr
-                      key={c.id}
-                      style={{
-                        borderBottom: "1px solid #F1F5F9",
-                        background: isSelected ? "rgba(172, 137, 70, 0.12)" : isReconciled ? "#F0FDF4" : "#FFF",
-                        cursor: "pointer"
-                      }}
-                      onClick={() => setSelectedChequeId(isSelected ? null : c.id)}
-                    >
-                      <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>{c.date}</td>
-                      <td style={{ padding: "7px 10px", fontWeight: 700, fontFamily: "var(--font-mono)" }}>
-                        {c.chequeNumber ? `#${c.chequeNumber}` : "-"}
-                      </td>
-                      <td style={{ padding: "7px 10px", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.beneficiary}>
-                        {c.beneficiary}
-                      </td>
-                      <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700 }}>
-                        {c.amount}
-                      </td>
-                      <td style={{ padding: "7px 10px", textAlign: "center" }}>
-                        {isReconciled ? (
-                          <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "99px", background: "#DCFCE7", color: "#166534", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "3px" }}>
-                            <CheckCircle2 size={10} /> Lettré
+                    return (
+                      <tr
+                        key={c.id}
+                        className={`${isSelected ? "is-selected" : ""} ${isReconciled ? "is-matched" : ""}`}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setSelectedChequeId(isSelected ? null : c.id)}
+                      >
+                        <td>
+                          <span className="ht-date-main">{c.date}</span>
+                        </td>
+                        <td>
+                          <span className="ht-number" style={{ fontWeight: 700 }}>
+                            {c.chequeNumber ? `#${c.chequeNumber}` : "—"}
                           </span>
-                        ) : isCashed ? (
-                          c.isCashedDeclaredWithoutProof ? (
-                            <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "99px", background: "#FEF3C7", color: "#92400E", fontWeight: 600 }}>
-                              Déclaratif
+                        </td>
+                        <td>
+                          <strong className="ht-beneficiary" title={c.beneficiary}>
+                            {c.beneficiary}
+                          </strong>
+                          {c.bankName && (
+                            <span className="ht-bank" style={{ display: "block", marginTop: "1px" }}>
+                              {c.bankName}
                             </span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <span className="ht-amount">{c.amount}</span>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          {isReconciled ? (
+                            <span className="cheque-status-tag matched" title="Rapproché avec une ligne de relevé bancaire">
+                              <CheckCircle2 size={11} />
+                              <span>Lettré</span>
+                            </span>
+                          ) : isCashed ? (
+                            c.isCashedDeclaredWithoutProof ? (
+                              <span className="cheque-status-tag encaisse declarative" title="Encaissé en mode déclaratif sans justificatif officiel">
+                                <Clock size={11} />
+                                <span>Déclaratif</span>
+                              </span>
+                            ) : (
+                              <span className="cheque-status-tag encaisse" title="Encaissé avec justificatif certifié">
+                                <ShieldCheck size={11} />
+                                <span>Encaissé</span>
+                              </span>
+                            )
                           ) : (
-                            <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "99px", background: "#DCFCE7", color: "#166534", fontWeight: 700 }}>
-                              Encaissé
+                            <span className="cheque-status-tag circulation" title="Émis mais pas encore débité sur le compte bancaire">
+                              <Clock size={11} />
+                              <span>Circulation</span>
                             </span>
-                          )
-                        ) : (
-                          <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "99px", background: "#FEF3C7", color: "#B45309", fontWeight: 600 }}>
-                            En circulation
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ padding: "7px 10px", textAlign: "center" }}>
-                        {isReconciled ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleUnreconcile(c.id);
-                            }}
-                            title="Annuler le rapprochement pour ce chèque"
-                            style={{ background: "transparent", border: "none", cursor: "pointer", color: "#DC2626" }}
-                          >
-                            <Unlink size={13} />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedChequeId(c.id);
-                            }}
-                            title="Sélectionner pour lettrage"
-                            style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--gold-dark)" }}
-                          >
-                            <Link2 size={13} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                          )}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          {isReconciled ? (
+                            <button
+                              type="button"
+                              className="btn-table-action-icon unlink-action"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUnreconcile(c.id);
+                              }}
+                              title="Annuler le lettrage de ce chèque"
+                            >
+                              <Unlink size={14} />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className={`btn-table-action-icon link-action ${isSelected ? "active" : ""}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedChequeId(isSelected ? null : c.id);
+                              }}
+                              title="Sélectionner pour lettrage manuel"
+                            >
+                              <Link2 size={14} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
         {/* Volet Droit : Opérations du relevé bancaire */}
-        <div style={{ background: "#FFF", borderRadius: "10px", border: "1px solid var(--border-color)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {/* Header Volet Droit */}
-          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-color)", background: "#F8FAFC" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>
-                Lignes d'opérations bancaires ({filteredLines.length})
-              </strong>
-              {/* Filtres de statut */}
-              <div style={{ display: "flex", gap: "4px" }}>
+        <div className="reconciliation-pane-card">
+          <div className="reconciliation-pane-header">
+            <div className="reconciliation-pane-title-row">
+              <div className="reconciliation-pane-title">
+                <CreditCard size={15} style={{ color: "var(--gold-dark)" }} />
+                <span>Opérations du relevé bancaire</span>
+                <span className="count-pill">{filteredLines.length}</span>
+              </div>
+
+              {/* Filtres de statut standard */}
+              <div className="history-filter-pills">
                 <button
                   type="button"
-                  className={`btn-filter-pill ${lineFilter === "all" ? "active" : ""}`}
+                  className={`filter-pill ${lineFilter === "all" ? "active" : ""}`}
                   onClick={() => setLineFilter("all")}
-                  style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "99px", border: "1px solid var(--border-color)", background: lineFilter === "all" ? "var(--bg-secondary)" : "#FFF", cursor: "pointer" }}
                 >
-                  Toutes
+                  Toutes ({statementLines.length})
                 </button>
                 <button
                   type="button"
-                  className={`btn-filter-pill ${lineFilter === "unmatched" ? "active" : ""}`}
+                  className={`filter-pill ${lineFilter === "unmatched" ? "active" : ""}`}
                   onClick={() => setLineFilter("unmatched")}
-                  style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "99px", border: "1px solid #FECACA", background: lineFilter === "unmatched" ? "#FEE2E2" : "#FFF", color: "#991B1B", cursor: "pointer" }}
                 >
                   Non lettrées
                 </button>
                 <button
                   type="button"
-                  className={`btn-filter-pill ${lineFilter === "matched" ? "active" : ""}`}
+                  className={`filter-pill ${lineFilter === "matched" ? "active" : ""}`}
                   onClick={() => setLineFilter("matched")}
-                  style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "99px", border: "1px solid #BBF7D0", background: lineFilter === "matched" ? "#DCFCE7" : "#FFF", color: "#166534", cursor: "pointer" }}
                 >
                   Lettrées
                 </button>
@@ -575,89 +688,120 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
             </div>
 
             {/* Barre de recherche opérations */}
-            <div style={{ position: "relative" }}>
-              <Search size={14} style={{ position: "absolute", left: "10px", top: "8px", color: "var(--text-muted)" }} />
+            <div className="history-search-box">
+              <Search size={14} className="history-search-icon" />
               <input
                 type="text"
-                placeholder="Rechercher par libellé bancaire, réf ou débit..."
+                className="history-search-input"
+                placeholder="Rechercher par libellé bancaire, référence ou débit..."
                 value={searchLine}
                 onChange={(e) => setSearchLine(e.target.value)}
-                style={{ width: "100%", padding: "6px 10px 6px 30px", borderRadius: "6px", border: "1px solid var(--border-color)", fontSize: "12px" }}
               />
+              {searchLine && (
+                <button
+                  type="button"
+                  className="search-clear-btn"
+                  onClick={() => setSearchLine("")}
+                  title="Effacer la recherche"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
           </div>
 
           {/* Table Opérations bancaires */}
-          <div style={{ flex: 1, overflowY: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11.5px" }}>
+          <div className="reconciliation-table-scroll">
+            <table className="history-table">
               <thead>
-                <tr style={{ background: "#F1F5F9", textAlign: "left", position: "sticky", top: 0, zIndex: 1 }}>
-                  <th style={{ padding: "6px 10px" }}>Date</th>
-                  <th style={{ padding: "6px 10px" }}>Libellé bancaire</th>
-                  <th style={{ padding: "6px 10px" }}>Chq extrait</th>
-                  <th style={{ padding: "6px 10px", textAlign: "right" }}>Débit (DA)</th>
-                  <th style={{ padding: "6px 10px", textAlign: "center" }}>Statut</th>
-                  <th style={{ padding: "6px 10px", textAlign: "center" }}>Action</th>
+                <tr>
+                  <th style={{ width: "90px" }}>Date</th>
+                  <th>Libellé bancaire</th>
+                  <th style={{ width: "95px" }}>Chq extrait</th>
+                  <th style={{ textAlign: "right", width: "120px" }}>Débit (DA)</th>
+                  <th style={{ textAlign: "center", width: "115px" }}>Statut</th>
+                  <th style={{ textAlign: "center", width: "50px" }}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredLines.map((l) => {
-                  const isSelected = selectedLineId === l.id;
-                  const isMatched = l.reconciliationStatus !== "unmatched";
+                {filteredLines.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "30px 15px", color: "var(--text-muted)" }}>
+                      Aucune opération bancaire chargée ou correspondant aux filtres.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredLines.map((l) => {
+                    const isSelected = selectedLineId === l.id;
+                    const isMatched = l.reconciliationStatus !== "unmatched";
 
-                  return (
-                    <tr
-                      key={l.id}
-                      style={{
-                        borderBottom: "1px solid #F1F5F9",
-                        background: isSelected ? "rgba(172, 137, 70, 0.12)" : isMatched ? "#F0FDF4" : "#FFF",
-                        cursor: "pointer"
-                      }}
-                      onClick={() => setSelectedLineId(isSelected ? null : l.id)}
-                    >
-                      <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>{l.operationDate}</td>
-                      <td style={{ padding: "7px 10px", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={l.label}>
-                        {l.label}
-                      </td>
-                      <td style={{ padding: "7px 10px" }}>
-                        {l.extractedChequeNumber ? (
-                          <span style={{ background: "rgba(172, 137, 70, 0.12)", color: "var(--gold-dark)", padding: "1px 6px", borderRadius: "4px", fontWeight: 600 }}>
-                            #{l.extractedChequeNumber}
+                    return (
+                      <tr
+                        key={l.id}
+                        className={`${isSelected ? "is-selected" : ""} ${isMatched ? "is-matched" : ""}`}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setSelectedLineId(isSelected ? null : l.id)}
+                      >
+                        <td>
+                          <span className="ht-date-main">{l.operationDate}</span>
+                          {l.valueDate && l.valueDate !== l.operationDate && (
+                            <span className="ht-date-sub">Val: {l.valueDate}</span>
+                          )}
+                        </td>
+                        <td>
+                          <strong className="ht-beneficiary" title={l.label}>
+                            {l.label}
+                          </strong>
+                          {l.reference && (
+                            <span className="ht-bank" style={{ display: "block", marginTop: "1px" }}>
+                              Réf: {l.reference}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {l.extractedChequeNumber ? (
+                            <span className="count-pill" style={{ fontFamily: "var(--font-mono)", color: "var(--gold-dark)", borderColor: "var(--gold-border)" }}>
+                              #{l.extractedChequeNumber}
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)" }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <span className="ht-amount" style={{ color: l.debit ? "#DC2626" : "var(--text-muted)" }}>
+                            {l.debit ? l.debit.toLocaleString("fr-FR", { minimumFractionDigits: 2 }) : "—"}
                           </span>
-                        ) : (
-                          <span style={{ color: "var(--text-muted)" }}>-</span>
-                        )}
-                      </td>
-                      <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: l.debit ? "#DC2626" : "var(--text-muted)" }}>
-                        {l.debit ? l.debit.toLocaleString("fr-FR", { minimumFractionDigits: 2 }) : "-"}
-                      </td>
-                      <td style={{ padding: "7px 10px", textAlign: "center" }}>
-                        {isMatched ? (
-                          <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "99px", background: "#DCFCE7", color: "#166534", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "3px" }}>
-                            <CheckCircle2 size={10} /> Lettré
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "99px", background: "#F1F5F9", color: "#64748B", fontWeight: 600 }}>
-                            En attente
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ padding: "7px 10px", textAlign: "center" }}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedLineId(l.id);
-                          }}
-                          title="Sélectionner pour lettrage"
-                          style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--gold-dark)" }}
-                        >
-                          <Link2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          {isMatched ? (
+                            <span className="cheque-status-tag matched" title="Lettré avec un chèque émis">
+                              <CheckCircle2 size={11} />
+                              <span>Lettré</span>
+                            </span>
+                          ) : (
+                            <span className="cheque-status-tag unmatched" title="En attente de lettrage avec un chèque émis">
+                              <Clock size={11} />
+                              <span>En attente</span>
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button
+                            type="button"
+                            className={`btn-table-action-icon link-action ${isSelected ? "active" : ""}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedLineId(isSelected ? null : l.id);
+                            }}
+                            title="Sélectionner pour lettrage manuel"
+                          >
+                            <Link2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
