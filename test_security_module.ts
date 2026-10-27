@@ -219,6 +219,53 @@ async function runSecurityTests() {
     assert(hasPermission(undefined, "cheque:print"), "Mode libre sans auth autorise l'impression");
     assert(hasPermission(undefined, "cheque:create"), "Mode libre sans auth autorise la saisie");
 
+    // 7.1. Tests Multi-rôles cumulatifs (Union des autorisations)
+    console.log("\n--- TEST 7.1 : Opérateurs Multi-Rôles Cumulatifs (Union des permissions) ---");
+    const multiOpValidator: UserRecord = {
+      id: "u-multi-1",
+      username: "dual.user",
+      displayName: "Dual Role User",
+      role: "operator",
+      roles: ["operator", "validator"],
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+
+    // Cet utilisateur cumule la saisie (opérateur) ET l'impression/lettrage (signataire)
+    assert(hasPermission(multiOpValidator, "cheque:create"), "Multi-rôles (operator + validator) : PEUT saisir des chèques");
+    assert(hasPermission(multiOpValidator, "batch:import"), "Multi-rôles (operator + validator) : PEUT importer des lots");
+    assert(hasPermission(multiOpValidator, "cheque:print"), "Multi-rôles (operator + validator) : PEUT imprimer des chèques");
+    assert(hasPermission(multiOpValidator, "reconcile:validate"), "Multi-rôles (operator + validator) : PEUT valider le lettrage");
+    assert(!hasPermission(multiOpValidator, "cheque:delete"), "Multi-rôles (operator + validator) : NE PEUT PAS supprimer (non admin)");
+    assert(!hasPermission(multiOpValidator, "users:manage"), "Multi-rôles (operator + validator) : NE PEUT PAS gérer les utilisateurs (non admin)");
+
+    const multiOpAuditor: UserRecord = {
+      id: "u-multi-2",
+      username: "audit.operator",
+      displayName: "Audit & Saisie",
+      role: "operator",
+      roles: ["operator", "auditor"],
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+
+    assert(hasPermission(multiOpAuditor, "cheque:create"), "Multi-rôles (operator + auditor) : PEUT saisir des chèques");
+    assert(hasPermission(multiOpAuditor, "audit:view"), "Multi-rôles (operator + auditor) : PEUT consulter le journal d'audit");
+    assert(!hasPermission(multiOpAuditor, "cheque:print"), "Multi-rôles (operator + auditor) : NE PEUT PAS imprimer de chèque");
+
+    const multiWithAdmin: UserRecord = {
+      id: "u-multi-admin",
+      username: "admin.dual",
+      displayName: "Admin avec rôles multiples",
+      role: "validator",
+      roles: ["validator", "admin"],
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+
+    assert(hasPermission(multiWithAdmin, "users:manage"), "Multi-rôles incluant admin : PEUT gérer les utilisateurs");
+    assert(hasPermission(multiWithAdmin, "backup:restore"), "Multi-rôles incluant admin : PEUT restaurer la base");
+
     // 8. Persistance de l'association et de la dissociation du compte émetteur dans LocalStorage
     console.log("\n--- TEST 8 : Persistance LocalStorage de l'association / dissociation de compte ---");
     const testCompanyId = "company-test-123";

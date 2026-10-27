@@ -43,7 +43,7 @@ import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
 import { exportFullBackup } from "../services/appSettings";
 import { getConfigFilePath, openConfigFileFolder } from "../services/templatesConfig";
 import { getSecuritySettings, saveSecuritySettings, logAuditEvent } from "../services/db";
-import { hasPermission } from "../services/permissions";
+import { hasPermission, isUserAdmin } from "../services/permissions";
 
 interface SettingsPageProps {
   settings: AppSettings;
@@ -78,9 +78,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [saveToast, setSaveToast] = useState<boolean>(false);
   const [securitySettings, setSecuritySettings] = useState<SecuritySettings>(() => getSecuritySettings());
 
-  const isAdmin = !currentUser || currentUser.role === "admin";
-  const canViewAudit = hasPermission(currentUser?.role, "audit:view");
-  const canRestore = hasPermission(currentUser?.role, "backup:restore");
+  const isAdmin = isUserAdmin(currentUser);
+  const canViewAudit = hasPermission(currentUser, "audit:view");
+  const canRestore = hasPermission(currentUser, "backup:restore");
 
   const handleOpenBackup = () => {
     if (onOpenBackup) onOpenBackup();
@@ -764,14 +764,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             <div className="storage-info-row">
               <div className="storage-info-item">
                 <strong className="storage-title">
-                  {currentUser?.role === "admin"
+                  {isAdmin
                     ? "Gestion des Opérateurs & Droits (Admin) :"
                     : "Mon Profil Opérateur :"}
                 </strong>
                 <span className="storage-path">
-                  {currentUser?.role === "admin"
-                    ? "Gestion complète, création d'opérateurs et attribution des 4 rôles"
-                    : `Connecté en tant que ${currentUser?.displayName} (${currentUser?.role})`}
+                  {isAdmin
+                    ? "Gestion complète, création d'opérateurs et attribution des rôles multiples"
+                    : `Connecté en tant que ${currentUser?.displayName} (${((currentUser?.roles && currentUser?.roles.length > 0) ? currentUser.roles.join(", ") : currentUser?.role)})`}
                 </span>
               </div>
 
@@ -781,14 +781,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   className="btn-storage-action"
                   onClick={onOpenUserManager}
                   title={
-                    currentUser?.role === "admin"
+                    isAdmin
                       ? "Gérer les opérateurs et les autorisations"
                       : "Consulter ou modifier mon profil"
                   }
                 >
                   <Users size={14} />
                   <span>
-                    {currentUser?.role === "admin" ? "Gérer les opérateurs" : "Mon profil"}
+                    {isAdmin ? "Gérer les opérateurs" : "Mon profil"}
                   </span>
                 </button>
               )}

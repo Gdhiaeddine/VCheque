@@ -376,7 +376,8 @@ export interface UserRecord {
   id: string;
   username: string; // Ex: "admin", "comptable"
   displayName: string; // Ex: "Direction Générale", "Mohamed S."
-  role: UserRole;
+  role: UserRole; // Rôle principal (rétro-compatible)
+  roles?: UserRole[]; // Rôles multiples cumulatifs (ex: ["operator", "validator"])
   pinHash?: string; // Hachage PBKDF2 avec sel
   pinSalt?: string;
   isActive: boolean;

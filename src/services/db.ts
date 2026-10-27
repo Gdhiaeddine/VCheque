@@ -446,6 +446,7 @@ export async function getDatabase(): Promise<Database | null> {
         username TEXT NOT NULL UNIQUE,
         display_name TEXT NOT NULL,
         role TEXT NOT NULL,
+        roles TEXT,
         pin_hash TEXT,
         pin_salt TEXT,
         is_active INTEGER DEFAULT 1,
@@ -453,6 +454,10 @@ export async function getDatabase(): Promise<Database | null> {
         last_login_at TEXT
       );
     `);
+
+    try {
+      await dbInstance.execute(`ALTER TABLE users ADD COLUMN roles TEXT;`);
+    } catch { /* Déjà existante */ }
 
     // 12. Table du grand journal d'audit (Audit Trail)
     await dbInstance.execute(`
@@ -3438,6 +3443,7 @@ export const DEFAULT_ADMIN_USER: UserRecord = {
   username: "admin",
   displayName: "Direction / Administrateur",
   role: "admin",
+  roles: ["admin"],
   isActive: true,
   createdAt: "2026-01-01T00:00:00.000Z"
 };
@@ -3468,7 +3474,13 @@ export async function saveSecuritySettings(settings: SecuritySettings): Promise<
 export function getActiveUser(): UserRecord {
   try {
     const raw = localStorage.getItem(ACTIVE_USER_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const u = JSON.parse(raw);
+      if (!u.roles || !Array.isArray(u.roles) || u.roles.length === 0) {
+        u.roles = [u.role || "operator"];
+      }
+      return u;
+    }
   } catch {}
   return DEFAULT_ADMIN_USER;
 }
@@ -3477,7 +3489,13 @@ export function getActiveUser(): UserRecord {
  * Définit l'utilisateur actif
  */
 export function setActiveUser(user: UserRecord): void {
-  localStorage.setItem(ACTIVE_USER_KEY, JSON.stringify(user));
+  const roles = user.roles && user.roles.length > 0 ? user.roles : [user.role || "operator"];
+  const normalizedUser: UserRecord = {
+    ...user,
+    role: roles[0] || user.role || "operator",
+    roles
+  };
+  localStorage.setItem(ACTIVE_USER_KEY, JSON.stringify(normalizedUser));
 }
 
 /**
@@ -3497,18 +3515,42 @@ export async function getUsers(): Promise<UserRecord[]> {
   if (db) {
     try {
       const rows = await db.select<any[]>(
-        `SELECT id, username, display_name as displayName, role, pin_hash as pinHash,
+        `SELECT id, username, display_name as displayName, role, roles, pin_hash as pinHash,
                 pin_salt as pinSalt, is_active as isActive, created_at as createdAt,
                 last_login_at as lastLoginAt
          FROM users ORDER BY created_at ASC;`
       );
       if (rows && rows.length > 0) {
-        list = rows.map((r) => ({ ...r, isActive: Boolean(r.isActive) }));
+        list = rows.map((r) => {
+          let parsedRoles: UserRole[] = [];
+          if (r.roles) {
+            try {
+              parsedRoles = typeof r.roles === "string" ? JSON.parse(r.roles) : r.roles;
+            } catch {
+              parsedRoles = [r.role];
+            }
+          } else if (r.role) {
+            parsedRoles = [r.role];
+          }
+          return {
+            ...r,
+            roles: parsedRoles.length > 0 ? parsedRoles : [r.role || "operator"],
+            isActive: Boolean(r.isActive)
+          };
+        });
       }
     } catch (err) {
       console.warn("Erreur lecture users SQLite:", err);
     }
   }
+
+  // Normaliser les rôles pour chaque utilisateur dans la liste
+  list = list.map((u) => {
+    if (!u.roles || !Array.isArray(u.roles) || u.roles.length === 0) {
+      return { ...u, roles: [u.role || "operator"] };
+    }
+    return u;
+  });
 
   if (list.length === 0) {
     list = [DEFAULT_ADMIN_USER];
@@ -3519,21 +3561,30 @@ export async function getUsers(): Promise<UserRecord[]> {
 }
 
 /**
- * Enregistre ou met à jour un utilisateur
+ * Enregistre ou met à jour un utilisateur (avec support multi-rôles)
  */
 export async function saveUser(user: UserRecord): Promise<void> {
+  // Normaliser roles & role
+  const roles = user.roles && user.roles.length > 0 ? user.roles : [user.role || "operator"];
+  const primaryRole = roles[0] || user.role || "operator";
+  const userToSave: UserRecord = {
+    ...user,
+    role: primaryRole,
+    roles
+  };
+
   // 1. LocalStorage
   try {
     const raw = localStorage.getItem(USERS_STORAGE_KEY);
     const list: UserRecord[] = raw ? JSON.parse(raw) : [DEFAULT_ADMIN_USER];
-    if (!list.some((u) => u.role === "admin")) {
+    if (!list.some((u) => u.role === "admin" || u.roles?.includes("admin"))) {
       list.unshift(DEFAULT_ADMIN_USER);
     }
-    const idx = list.findIndex((u) => u.id === user.id);
+    const idx = list.findIndex((u) => u.id === userToSave.id);
     if (idx >= 0) {
-      list[idx] = user;
+      list[idx] = userToSave;
     } else {
-      list.push(user);
+      list.push(userToSave);
     }
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(list));
   } catch {}
@@ -3544,18 +3595,19 @@ export async function saveUser(user: UserRecord): Promise<void> {
     try {
       await db.execute(
         `INSERT OR REPLACE INTO users (
-          id, username, display_name, role, pin_hash, pin_salt, is_active, created_at, last_login_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+          id, username, display_name, role, roles, pin_hash, pin_salt, is_active, created_at, last_login_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
         [
-          user.id,
-          user.username,
-          user.displayName,
-          user.role,
-          user.pinHash || null,
-          user.pinSalt || null,
-          user.isActive ? 1 : 0,
-          user.createdAt,
-          user.lastLoginAt || null
+          userToSave.id,
+          userToSave.username,
+          userToSave.displayName,
+          userToSave.role,
+          JSON.stringify(userToSave.roles),
+          userToSave.pinHash || null,
+          userToSave.pinSalt || null,
+          userToSave.isActive ? 1 : 0,
+          userToSave.createdAt,
+          userToSave.lastLoginAt || null
         ]
       );
     } catch (err) {
@@ -3563,7 +3615,8 @@ export async function saveUser(user: UserRecord): Promise<void> {
     }
   }
 
-  await logAuditEvent("user_update", "user", `Mise à jour du profil utilisateur : ${user.displayName} (${user.role})`);
+  const roleDesc = roles.join(", ");
+  await logAuditEvent("user_update", "user", `Mise à jour du profil utilisateur : ${userToSave.displayName} (${roleDesc})`);
 }
 
 /**
@@ -3572,7 +3625,7 @@ export async function saveUser(user: UserRecord): Promise<void> {
 export async function deleteUser(id: string): Promise<boolean> {
   const users = await getUsers();
   const target = users.find((u) => u.id === id);
-  if (!target || target.role === "admin" || users.length <= 1) return false;
+  if (!target || target.role === "admin" || target.roles?.includes("admin") || users.length <= 1) return false;
 
   // LocalStorage
   try {

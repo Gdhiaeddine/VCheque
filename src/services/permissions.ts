@@ -1,4 +1,4 @@
-import type { UserRole } from "../types";
+import type { UserRole, UserRecord } from "../types";
 
 export type AppAction =
   | "cheque:create"        // Saisir / Enregistrer un chèque brouillon
@@ -20,22 +20,39 @@ export type AppAction =
   | "report:export";       // Exporter les états comptables (Excel, PDF, CSV)
 
 /**
- * Matrice de contrôle d'accès basée sur les rôles (RBAC)
+ * Extrait la liste des rôles normalisés à partir d'un utilisateur, d'un rôle unique ou d'un tableau de rôles
  */
-export function hasPermission(role: UserRole | undefined, action: AppAction): boolean {
-  // Par défaut sans authentification ou si admin : tous les droits sont accordés
-  if (!role || role === "admin") return true;
+export function getUserRoles(target?: UserRecord | UserRole | UserRole[] | null): UserRole[] {
+  if (!target) return [];
+  if (typeof target === "string") return [target];
+  if (Array.isArray(target)) return target;
+  if (target.roles && target.roles.length > 0) return target.roles;
+  if (target.role) return [target.role];
+  return [];
+}
+
+/**
+ * Vérifie si un utilisateur ou une liste de rôles détient les privilèges Administrateur
+ */
+export function isUserAdmin(target?: UserRecord | UserRole | UserRole[] | null): boolean {
+  if (!target) return true; // Sans authentification = mode libre administrateur
+  return getUserRoles(target).includes("admin");
+}
+
+/**
+ * Évalue une permission pour un rôle individuel donné
+ */
+function checkSingleRolePermission(role: UserRole, action: AppAction): boolean {
+  if (role === "admin") return true;
 
   switch (action) {
     case "cheque:create":
     case "cheque:edit":
-      // Opérateurs et Signataires peuvent créer et modifier des chèques
       return role === "operator" || role === "validator";
 
     case "cheque:print":
     case "cheque:cancel":
     case "batch:print":
-      // L'émission officielle, l'impression physique et l'annulation sont réservées au Signataire
       return role === "validator";
 
     case "cheque:delete":
@@ -43,34 +60,47 @@ export function hasPermission(role: UserRole | undefined, action: AppAction): bo
     case "backup:restore":
     case "users:manage":
     case "audit:clear":
-      // Ces opérations destructives ou sensibles sont réservées exclusivement à l'Administrateur
-      return false;
+      return false; // Réservé strictement à l'Administrateur
 
     case "reconcile:validate":
     case "reconcile:match":
-      // La validation bancaire et le lettrage sont réservés au Signataire / Validateur
       return role === "validator";
 
     case "batch:import":
-      // L'import et la préparation de bordereaux sont autorisés aux opérateurs et signataires
       return role === "operator" || role === "validator";
 
     case "backup:export":
     case "report:export":
-      // Tous les rôles peuvent exporter une copie de données pour sauvegarde ou archivage
       return true;
 
     case "audit:view":
-      // Consultation de l'audit autorisée aux Signataires et Auditeurs (ainsi qu'aux Admins)
       return role === "validator" || role === "auditor";
 
     case "settings:edit":
-      // Modification des réglages de configuration : réservée aux Admins et Signataires
       return role === "validator";
 
     default:
       return false;
   }
+}
+
+/**
+ * Matrice de contrôle d'accès basée sur les rôles (RBAC) avec support multi-rôles cumulatifs.
+ * Si l'utilisateur possède plusieurs rôles, ses permissions correspondent à l'union de tous ses rôles.
+ */
+export function hasPermission(
+  target: UserRecord | UserRole | UserRole[] | undefined | null,
+  action: AppAction
+): boolean {
+  // Par défaut sans authentification : tous les droits sont accordés
+  if (!target) return true;
+
+  const roles = getUserRoles(target);
+  // Si non défini ou admin présent parmi les rôles : tous les droits accordés
+  if (roles.length === 0 || roles.includes("admin")) return true;
+
+  // L'action est autorisée si AU MOINS UN des rôles assignés l'autorise (Union)
+  return roles.some((r) => checkSingleRolePermission(r, action));
 }
 
 /**

@@ -124,13 +124,19 @@ button {
 }
 
 /* ==========================================================================
-   TOPBAR
+   APP TOPBAR — ULTRA-MODERN LUXURY FINTECH GLASSMORPHISM
    ========================================================================== */
 .app-topbar {
+  position: relative;
   height: 56px;
-  background-color: var(--bg-panel);
-  border-bottom: 1px solid var(--border-color);
-  padding: 0 24px;
+  background: linear-gradient(180deg, rgba(255, 254, 251, 0.96) 0%, rgba(248, 244, 235, 0.94) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(229, 221, 206, 0.85);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset,
+              0 3px 14px rgba(172, 137, 70, 0.06),
+              0 1px 3px rgba(0, 0, 0, 0.02);
+  padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -138,33 +144,73 @@ button {
   z-index: 20;
 }
 
+/* Fin filet doré/émeraude de prestige en bas du topbar */
+.app-topbar::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(23, 72, 58, 0.6) 0%,
+    rgba(197, 161, 90, 0.9) 25%,
+    rgba(245, 232, 203, 0.98) 50%,
+    rgba(197, 161, 90, 0.9) 75%,
+    rgba(23, 72, 58, 0.6) 100%
+  );
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Brand Logo & Titles */
 .topbar-brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  cursor: default;
 }
 
 .brand-logo-gold {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #FFF9ED 0%, #F5E8CB 100%);
+  border: 1px solid rgba(197, 161, 90, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  box-shadow: 0 2px 6px rgba(172, 137, 70, 0.3);
+  box-shadow: 0 3px 10px rgba(172, 137, 70, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+}
+
+.brand-logo-gold:hover {
+  transform: translateY(-1px) scale(1.04);
+  box-shadow: 0 5px 14px rgba(172, 137, 70, 0.32), inset 0 1px 0 rgba(255, 255, 255, 1);
+  border-color: rgba(197, 161, 90, 0.8);
 }
 
 .brand-logo-img {
-  width: 100%;
-  height: 100%;
+  width: 26px;
+  height: 26px;
   object-fit: contain;
   display: block;
+  filter: drop-shadow(0 1px 2px rgba(137, 103, 47, 0.25));
 }
 
 .brand-titles {
   display: flex;
   flex-direction: column;
+  gap: 1px;
+}
+
+.brand-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .brand-name {
@@ -172,77 +218,93 @@ button {
   font-size: 15px;
   font-weight: 800;
   color: var(--text-primary);
-  letter-spacing: -0.2px;
+  letter-spacing: -0.3px;
   line-height: 1.2;
+}
+
+.brand-name-gold {
+  background: linear-gradient(135deg, #AC8946 0%, #89672F 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 900;
+}
+
+.brand-edition-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #89672F;
+  background: linear-gradient(135deg, rgba(250, 246, 237, 0.95), rgba(243, 232, 206, 0.9));
+  border: 1px solid rgba(197, 161, 90, 0.45);
+  padding: 1.5px 6px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(172, 137, 70, 0.12);
+}
+
+.brand-edition-badge .badge-sparkle-icon {
+  color: #C5A15A;
 }
 
 .brand-sub {
   font-size: 10.5px;
   color: var(--text-secondary);
   font-weight: 500;
-}
-
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.topbar-badge {
   display: flex;
   align-items: center;
   gap: 6px;
-  background-color: var(--green-bg);
-  color: var(--green-positive);
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
 }
 
-.topbar-icon-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
+.brand-sub-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--green-positive);
+  display: inline-block;
+}
+
+/* TopBar Right Controls */
+.topbar-right {
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-  transition: all var(--transition-fast);
+  gap: 10px;
 }
 
-.topbar-icon-btn:hover {
-  background-color: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
+/* Company Button Capsule */
 .topbar-company-btn {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  background-color: #ffffff;
-  border: 1px solid var(--border-color);
-  padding: 4.5px 12px;
-  border-radius: var(--radius-sm);
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(216, 198, 165, 0.6);
+  padding: 4px 10px 4px 6px;
+  border-radius: 20px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
 .topbar-company-btn:hover {
-  background-color: var(--bg-secondary);
-  border-color: var(--gold-border);
-  box-shadow: 0 2px 6px rgba(172, 137, 70, 0.15);
+  background: #ffffff;
+  border-color: var(--gold-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(172, 137, 70, 0.16);
 }
 
 .company-btn-icon-wrapper {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, rgba(172, 137, 70, 0.15), rgba(172, 137, 70, 0.05));
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(172, 137, 70, 0.18), rgba(172, 137, 70, 0.06));
+  border: 1px solid rgba(172, 137, 70, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--gold-primary);
+  color: var(--gold-dark);
+  flex-shrink: 0;
 }
 
 .company-btn-text {
@@ -253,26 +315,113 @@ button {
 }
 
 .company-btn-label {
-  font-size: 9.5px;
-  color: var(--text-secondary);
+  font-size: 8.5px;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.3px;
-  font-weight: 600;
+  letter-spacing: 0.5px;
+  font-weight: 700;
 }
 
 .company-btn-name {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   color: var(--text-primary);
-  max-width: 170px;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .company-btn-chevron {
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.topbar-company-btn:hover .company-btn-chevron {
+  transform: translateY(1px);
+  color: var(--gold-dark);
+}
+
+/* Security Offline Badge */
+.topbar-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(234, 241, 233, 0.9);
+  color: var(--green-positive);
+  border: 1px solid rgba(62, 121, 89, 0.22);
+  padding: 4.5px 11px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(62, 121, 89, 0.05);
+  cursor: default;
+}
+
+.badge-pulse-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #10B981;
+  box-shadow: 0 0 6px #10B981;
+  animation: pulseBadge 2s infinite ease-in-out;
+}
+
+@keyframes pulseBadge {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.65;
+  }
+}
+
+/* Icon Buttons (Lock & Settings) */
+.topbar-icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(229, 221, 206, 0.8);
   color: var(--text-secondary);
-  margin-left: 2px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.topbar-icon-btn:hover {
+  background: #ffffff;
+  border-color: var(--gold-border);
+  color: var(--gold-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(172, 137, 70, 0.15);
+}
+
+.topbar-icon-btn.settings-btn:hover .settings-icon {
+  transform: rotate(60deg);
+}
+
+.topbar-icon-btn.settings-btn .settings-icon {
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.topbar-icon-btn.lock-btn {
+  background: rgba(254, 242, 242, 0.85);
+  border-color: rgba(239, 68, 68, 0.22);
+  color: #DC2626;
+}
+
+.topbar-icon-btn.lock-btn:hover {
+  background: #DC2626;
+  border-color: #DC2626;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(220, 38, 38, 0.28);
 }
 
 /* ==========================================================================
@@ -5787,23 +5936,24 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
-  border-radius: 99px;
+  padding: 0 4px;
+  background: transparent !important;
+  border: none !important;
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.1px;
 }
 
 .active-status-indicator.saved {
-  background-color: rgba(217, 119, 6, 0.12);
+  background: transparent !important;
   color: #d97706;
-  border: 1px solid rgba(217, 119, 6, 0.25);
+  border: none !important;
 }
 
 .active-status-indicator.printed {
-  background-color: rgba(16, 185, 129, 0.12);
+  background: transparent !important;
   color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  border: none !important;
 }
 
 .btn-new-cheque {
@@ -10310,34 +10460,57 @@ button {
    MODULE 1.8 : SÉCURITÉ, UTILISATEURS, TRACABILITÉ & SAUVEGARDES CERTIFIÉES
    ========================================================================== */
 
-/* TopBar User & Lock Elements */
+/* TopBar User & Lock Elements (Harmonisés & Prestige) */
 .topbar-user-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid var(--border-color);
-  padding: 4px 10px;
-  border-radius: var(--radius-md, 8px);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(216, 198, 165, 0.65);
+  padding: 3.5px 10px 3.5px 5px;
+  border-radius: 20px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
 .topbar-user-btn:hover {
   background: #ffffff;
   border-color: var(--gold-primary);
-  box-shadow: 0 2px 8px rgba(172, 137, 70, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(172, 137, 70, 0.18);
+}
+
+.user-btn-avatar-wrapper {
+  position: relative;
+  flex-shrink: 0;
 }
 
 .user-btn-avatar {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background: rgba(172, 137, 70, 0.12);
+  background: linear-gradient(135deg, rgba(23, 72, 58, 0.12), rgba(197, 161, 90, 0.2));
+  border: 1px solid rgba(172, 137, 70, 0.35);
   color: var(--gold-dark);
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+
+.user-btn-pulse-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #10B981;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 0 5px rgba(16, 185, 129, 0.7);
 }
 
 .user-btn-details {
@@ -10348,45 +10521,396 @@ button {
 }
 
 .user-btn-name {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 700;
   color: var(--text-primary);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-btn-role {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 9px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
 }
 
 .user-btn-role.role-admin {
-  color: #dc2626;
+  color: #DC2626;
+  background: transparent;
+  border: none;
 }
 
 .user-btn-role.role-validator {
-  color: #d97706;
+  color: #D97706;
+  background: transparent;
+  border: none;
 }
 
 .user-btn-role.role-operator {
   color: #059669;
+  background: transparent;
+  border: none;
 }
 
 .user-btn-role.role-auditor {
-  color: #2563eb;
+  color: #2563EB;
+  background: transparent;
+  border: none;
 }
 
 .topbar-icon-btn.lock-btn {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.25);
-  color: #dc2626;
+  background: rgba(254, 242, 242, 0.85);
+  border-color: rgba(239, 68, 68, 0.22);
+  color: #DC2626;
 }
 
 .topbar-icon-btn.lock-btn:hover {
-  background: #dc2626;
-  border-color: #dc2626;
+  background: #DC2626;
+  border-color: #DC2626;
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(220, 38, 38, 0.28);
+}
+
+/* ==========================================================================
+   MODAL GESTION DES OPÉRATEURS & DROITS D'ACCÈS (STYLE PRESTIGE HARMONISÉ)
+   ========================================================================== */
+.user-manager-card {
+  max-width: 660px;
+  width: 95%;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(216, 198, 165, 0.7);
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.user-manager-header {
+  padding: 16px 22px;
+  background: linear-gradient(180deg, #FFFFFF 0%, #FAF8F5 100%);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.user-manager-icon-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(23, 72, 58, 0.12), rgba(197, 161, 90, 0.22));
+  border: 1px solid rgba(172, 137, 70, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold-dark);
+  flex-shrink: 0;
+}
+
+.user-manager-body {
+  padding: 20px 24px;
+  max-height: 72vh;
+  overflow-y: auto;
+}
+
+.user-manager-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.user-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.user-list-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #FFFFFF;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.user-list-card:hover {
+  border-color: var(--gold-border);
+  box-shadow: 0 3px 12px rgba(172, 137, 70, 0.1);
+  transform: translateY(-1px);
+}
+
+.user-list-card.active-session {
+  background: linear-gradient(135deg, #FAFEFC 0%, #F0FDF4 100%);
+  border: 1.5px solid #86EFAC;
+  box-shadow: 0 2px 10px rgba(34, 197, 94, 0.12);
+}
+
+.user-card-avatar-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.user-card-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #F8F4EA 0%, #EFE7D5 100%);
+  border: 1px solid rgba(172, 137, 70, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--gold-dark);
+}
+
+.user-card-online-dot {
+  position: absolute;
+  bottom: 0px;
+  right: 0px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #10B981;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
+}
+
+.user-card-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.user-role-badge-pill {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.user-role-badge-pill.role-admin {
+  color: #DC2626;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+}
+
+.user-role-badge-pill.role-validator {
+  color: #D97706;
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.2);
+}
+
+.user-role-badge-pill.role-operator {
+  color: #2563EB;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.user-role-badge-pill.role-auditor {
+  color: #059669;
+  background: rgba(5, 150, 105, 0.08);
+  border: 1px solid rgba(5, 150, 105, 0.2);
+}
+
+.active-session-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #DCFCE7;
+  color: #166534;
+  border: 1px solid #BBF7D0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-user-activate {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: var(--radius-xs);
+  background: #FFFFFF;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-user-activate:hover {
+  background: #F0FDF4;
+  border-color: #86EFAC;
+  color: #166534;
+  box-shadow: 0 2px 6px rgba(34, 197, 94, 0.12);
+}
+
+.btn-user-icon-action {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #FFFFFF;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-user-icon-action:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--gold-border);
+}
+
+.btn-user-icon-action.delete-danger:hover {
+  background: #FEF2F2;
+  border-color: #FECACA;
+  color: #DC2626;
+}
+
+.user-form-card-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.user-form-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.user-form-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+}
+
+.user-form-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background: #FFFFFF;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.user-form-input:focus {
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 0 3px rgba(172, 137, 70, 0.12);
+}
+
+.user-form-input:disabled {
+  background: var(--bg-secondary);
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+
+.roles-selector-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.role-select-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: #FAFAFA;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.role-select-box:hover {
+  border-color: var(--gold-border);
+  background: #FFFFFF;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.role-select-box.selected {
+  background: #FFFFFF;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+}
+
+.role-select-box.selected.role-admin {
+  border: 1.5px solid #DC2626;
+  background: rgba(220, 38, 38, 0.02);
+}
+
+.role-select-box.selected.role-validator {
+  border: 1.5px solid #D97706;
+  background: rgba(217, 119, 6, 0.02);
+}
+
+.role-select-box.selected.role-operator {
+  border: 1.5px solid #2563EB;
+  background: rgba(37, 99, 235, 0.02);
+}
+
+.role-select-box.selected.role-auditor {
+  border: 1.5px solid #059669;
+  background: rgba(5, 150, 105, 0.02);
+}
+
+.role-box-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.role-box-title {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.role-box-desc {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.35;
+  margin-top: 3px;
 }
 
 /* Security in SettingsPage uses the standard .settings-card, .storage-info-row, and .segmented-control classes */

@@ -695,7 +695,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
             )}
             <button
               type="button"
-              className="btn-modal-primary"
+              className="btn-action-luxury-green"
               onClick={onConfirmPrint}
             >
               <Printer size={16} />

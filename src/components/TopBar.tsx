@@ -1,6 +1,7 @@
 import React from "react";
-import { Settings, ShieldCheck, Building2, ChevronDown, User, Lock, KeyRound } from "lucide-react";
+import { Settings, Building2, ChevronDown, User, Lock } from "lucide-react";
 import type { CompanyRecord, UserRecord } from "../types";
+import { isUserAdmin } from "../services/permissions";
 
 interface TopBarProps {
   onOpenSettings: () => void;
@@ -28,16 +29,38 @@ export const TopBar: React.FC<TopBarProps> = ({
   onLockSession,
   isAuthEnabled
 }) => {
+  // Initiales de l'opérateur pour l'avatar de prestige
+  const userInitials = currentUser?.displayName
+    ? currentUser.displayName
+        .trim()
+        .split(/\s+/)
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : null;
+
+  const isAdmin = isUserAdmin(currentUser);
+  const userRolesList = currentUser?.roles && currentUser.roles.length > 0
+    ? currentUser.roles
+    : [currentUser?.role || "operator"];
+  const roleDisplayLabel = userRolesList.map((r) => ROLE_LABELS[r] || r).join(" · ");
+
   return (
     <header className="app-topbar">
       <div className="topbar-left">
         <div className="topbar-brand">
           <div className="brand-logo-gold" aria-hidden="true">
-            <img src="/icon-small.png" alt="Logo Chèque Studio" className="brand-logo-img" />
+            <img src="/icon-small.png" alt="Logo VCheque Studio" className="brand-logo-img" />
           </div>
           <div className="brand-titles">
-            <h1 className="brand-name">VCheque Studio</h1>
-            <span className="brand-sub">Remplissage de chèques algériens</span>
+            <h1 className="brand-name">
+              VCheque <span className="brand-name-gold">Studio</span>
+            </h1>
+            <span className="brand-sub">
+              <span className="brand-sub-dot" />
+              Impression & Traçabilité Bancaire Algérienne
+            </span>
           </div>
         </div>
       </div>
@@ -51,15 +74,15 @@ export const TopBar: React.FC<TopBarProps> = ({
             title="Changer d'entreprise / Gérer les dossiers d'entreprises"
           >
             <div className="company-btn-icon-wrapper">
-              <Building2 size={14} className="company-btn-icon" />
+              <Building2 size={13} className="company-btn-icon" />
             </div>
             <div className="company-btn-text">
-              <span className="company-btn-label">Entreprise active :</span>
+              <span className="company-btn-label">Entreprise</span>
               <span className="company-btn-name">
                 {activeCompany?.name || "Mon Entreprise"}
               </span>
             </div>
-            <ChevronDown size={14} className="company-btn-chevron" />
+            <ChevronDown size={13} className="company-btn-chevron" />
           </button>
         )}
 
@@ -70,18 +93,21 @@ export const TopBar: React.FC<TopBarProps> = ({
             className="topbar-user-btn"
             onClick={onOpenUserManager}
             title={
-              currentUser.role === "admin"
+              isAdmin
                 ? "Gérer les opérateurs ou naviguer entre les comptes (Admin)"
                 : `Mon profil utilisateur (${currentUser.displayName})`
             }
           >
-            <div className="user-btn-avatar">
-              <User size={13} />
+            <div className="user-btn-avatar-wrapper">
+              <div className="user-btn-avatar">
+                {userInitials || <User size={13} />}
+              </div>
+              <span className="user-btn-pulse-dot" title="Session active" />
             </div>
             <div className="user-btn-details">
               <span className="user-btn-name">{currentUser.displayName}</span>
-              <span className={`user-btn-role role-${currentUser.role}`}>
-                {ROLE_LABELS[currentUser.role] || currentUser.role}
+              <span className={`user-btn-role role-${currentUser.role}`} title={roleDisplayLabel}>
+                {roleDisplayLabel}
               </span>
             </div>
           </button>
@@ -96,23 +122,19 @@ export const TopBar: React.FC<TopBarProps> = ({
             title="Verrouiller la session immédiatement"
             aria-label="Verrouiller la session"
           >
-            <Lock size={16} />
+            <Lock size={15} />
           </button>
         )}
 
-        <div className="topbar-badge">
-          <ShieldCheck size={14} className="badge-icon-green" />
-          <span>Données 100% locales</span>
-        </div>
-
+        {/* Bouton Paramètres */}
         <button
           type="button"
-          className="topbar-icon-btn"
+          className="topbar-icon-btn settings-btn"
           onClick={onOpenSettings}
           title="Paramètres de l'application"
           aria-label="Paramètres"
         >
-          <Settings size={18} />
+          <Settings size={17} className="settings-icon" />
         </button>
       </div>
     </header>
