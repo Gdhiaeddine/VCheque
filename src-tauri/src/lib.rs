@@ -119,6 +119,43 @@ fn save_pdf_to_downloads(app: tauri::AppHandle, filename: String, bytes: Vec<u8>
     Ok(path_str)
 }
 
+#[tauri::command]
+fn pick_folder_dialog(default_path: Option<String>) -> Result<Option<String>, String> {
+    let mut dialog = rfd::FileDialog::new();
+    if let Some(ref path) = default_path {
+        if !path.is_empty() {
+            dialog = dialog.set_directory(path);
+        }
+    }
+    if let Some(folder_path) = dialog.pick_folder() {
+        Ok(Some(folder_path.to_string_lossy().to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+fn get_app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
+    Ok(app_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn open_folder_path(folder_path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        use std::path::Path;
+        let p = Path::new(&folder_path);
+        if !p.exists() {
+            let _ = fs::create_dir_all(p);
+        }
+        let _ = Command::new("explorer").arg(&folder_path).spawn();
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -138,7 +175,10 @@ pub fn run() {
             open_templates_config_folder,
             save_file_dialog,
             save_pdf_dialog,
-            save_pdf_to_downloads
+            save_pdf_to_downloads,
+            pick_folder_dialog,
+            get_app_data_dir,
+            open_folder_path
         ])
         .run(tauri::generate_context!())
         .expect("erreur lors du lancement de Chèque Studio");

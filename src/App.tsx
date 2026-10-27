@@ -42,6 +42,8 @@ import { LockScreenModal } from "./components/LockScreenModal";
 import { UserSessionManagerModal } from "./components/UserSessionManagerModal";
 import { AuditTrailModal } from "./components/AuditTrailModal";
 import { BackupRestoreModal } from "./components/BackupRestoreModal";
+import { InitialSetupWizard } from "./components/InitialSetupWizard";
+import { isSetupCompleted } from "./services/setupConfig";
 import { hasPermission, getPermissionErrorMessage } from "./services/permissions";
 import {
   saveChequeRecord,
@@ -288,6 +290,7 @@ export default function App() {
   const [showAuditTrailModal, setShowAuditTrailModal] = useState<boolean>(false);
   const [showBackupRestoreModal, setShowBackupRestoreModal] = useState<boolean>(false);
   const [backupModalInitialTab, setBackupModalInitialTab] = useState<"export" | "restore" | "auto">("export");
+  const [isInitialSetupOpen, setIsInitialSetupOpen] = useState<boolean>(() => !isSetupCompleted());
 
   // Synchronisation des paramètres de sécurité lors de changements
   const refreshSecurity = useCallback(() => {
@@ -296,6 +299,24 @@ export default function App() {
     const u = getActiveUser();
     setCurrentUser(u);
   }, []);
+
+  const handleInitialSetupComplete = (result: { company: CompanyRecord; admin: UserRecord }) => {
+    setIsInitialSetupOpen(false);
+    setActiveCompany(result.company);
+    setCurrentUser(result.admin);
+    loadCompanyAccounts(result.company.id);
+    refreshSecurity();
+    const appS = loadAppSettings();
+    setAppSettings(appS);
+    if (appS.defaultPlace) {
+      setPlace(appS.defaultPlace);
+    }
+    setHistoryRefreshTrigger((n) => n + 1);
+    setToast({
+      message: `Bienvenue dans VCheque Studio ! Configuration initiale réussie pour "${result.company.name}".`,
+      type: "success"
+    });
+  };
 
   // Verrouillage automatique après inactivité
   useEffect(() => {
@@ -1488,6 +1509,7 @@ export default function App() {
               setBackupModalInitialTab("auto");
               setShowBackupRestoreModal(true);
             }}
+            onOpenInitialSetup={() => setIsInitialSetupOpen(true)}
             currentUser={currentUser}
           />
         ) : (
@@ -2110,6 +2132,14 @@ export default function App() {
           });
         }}
       />
+
+      {/* Assistant d'Initialisation & Premier Démarrage */}
+      {isInitialSetupOpen && !showSplash && (
+        <InitialSetupWizard
+          onComplete={handleInitialSetupComplete}
+          onCancel={isSetupCompleted() ? () => setIsInitialSetupOpen(false) : undefined}
+        />
+      )}
 
       {/* Dedicated Print Layer (Hidden on screen, exact 100% physical mm on printer) */}
       {(() => {

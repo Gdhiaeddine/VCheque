@@ -3650,7 +3650,7 @@ export async function deleteUser(id: string): Promise<boolean> {
  */
 export async function logAuditEvent(
   action: AuditActionType,
-  entityType: "cheque" | "bank_account" | "bank_statement" | "beneficiary" | "backup" | "user" | "security",
+  entityType: "cheque" | "bank_account" | "bank_statement" | "beneficiary" | "backup" | "user" | "security" | "system",
   description: string,
   metadata?: Record<string, any>
 ): Promise<void> {

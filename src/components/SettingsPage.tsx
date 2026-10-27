@@ -42,6 +42,7 @@ import type {
 import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
 import { exportFullBackup } from "../services/appSettings";
 import { getConfigFilePath, openConfigFileFolder } from "../services/templatesConfig";
+import { getDataStoragePath, openFolder } from "../services/setupConfig";
 import { getSecuritySettings, saveSecuritySettings, logAuditEvent } from "../services/db";
 import { hasPermission, isUserAdmin } from "../services/permissions";
 
@@ -56,6 +57,7 @@ interface SettingsPageProps {
   onOpenBackup?: () => void;
   onOpenRestore?: () => void;
   onOpenAutoBackup?: () => void;
+  onOpenInitialSetup?: () => void;
   currentUser?: UserRecord | null;
 }
 
@@ -72,9 +74,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   onOpenBackup,
   onOpenRestore,
   onOpenAutoBackup,
+  onOpenInitialSetup,
   currentUser
 }) => {
   const [configPath, setConfigPath] = useState<string>("");
+  const [dataStoragePath, setDataStoragePath] = useState<string>("");
   const [saveToast, setSaveToast] = useState<boolean>(false);
   const [securitySettings, setSecuritySettings] = useState<SecuritySettings>(() => getSecuritySettings());
 
@@ -99,6 +103,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   useEffect(() => {
     getConfigFilePath().then(setConfigPath).catch(console.error);
+    getDataStoragePath().then(setDataStoragePath).catch(console.error);
   }, []);
 
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
@@ -691,6 +696,40 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               <div className="storage-info-item">
                 <strong className="storage-title">Base SQLite de l'historique :</strong>
                 <span className="storage-path">cheques.db (Indexation B-Tree 60 FPS)</span>
+              </div>
+            </div>
+
+            {/* Dossier des données et configurations de l'application */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">Dossier de données & configuration :</strong>
+                <span className="storage-path" title={dataStoragePath}>
+                  {dataStoragePath || "Dossier applicatif local"}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="btn-storage-action"
+                  onClick={() => openFolder(dataStoragePath)}
+                  title="Ouvrir le dossier dans l'Explorateur Windows"
+                >
+                  <FolderOpen size={15} />
+                  <span>Ouvrir</span>
+                </button>
+
+                {isAdmin && onOpenInitialSetup && (
+                  <button
+                    type="button"
+                    className="btn-storage-action"
+                    onClick={onOpenInitialSetup}
+                    title="Relancer l'assistant d'initialisation"
+                  >
+                    <Sparkles size={14} />
+                    <span>Relancer l'assistant</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

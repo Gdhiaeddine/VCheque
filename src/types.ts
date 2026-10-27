@@ -413,7 +413,8 @@ export type AuditActionType =
   | "user_create"
   | "user_update"
   | "user_delete"
-  | "settings_update";
+  | "settings_update"
+  | "system_init";
 
 export interface AuditLogRecord {
   id: string;
@@ -423,7 +424,7 @@ export interface AuditLogRecord {
   userName: string;
   userRole: UserRole;
   action: AuditActionType;
-  entityType: "cheque" | "bank_account" | "bank_statement" | "beneficiary" | "backup" | "user" | "security";
+  entityType: "cheque" | "bank_account" | "bank_statement" | "beneficiary" | "backup" | "user" | "security" | "system";
   entityId?: string;
   description: string;
   metadata?: Record<string, any>;
