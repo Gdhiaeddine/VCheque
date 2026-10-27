@@ -26,7 +26,8 @@ import type {
   ChequeRecord,
   BankAccountRecord,
   BankStatementRecord,
-  BankStatementLineRecord
+  BankStatementLineRecord,
+  UserRecord
 } from "../types";
 import {
   getAllFilteredCheques,
@@ -45,19 +46,26 @@ import {
 } from "../services/reconciliationEngine";
 import { BankStatementImportModal } from "./BankStatementImportModal";
 import { exportBankReconciliationToExcel, exportAccountingJournalToExcel } from "../services/exportReports";
+import { hasPermission, getPermissionErrorMessage } from "../services/permissions";
 
 interface ReconciliationPageProps {
   activeCompanyId?: string;
   onBackToHome?: () => void;
   onOpenCheckDetails?: (cheque: ChequeRecord) => void;
+  currentUser?: UserRecord | null;
 }
 
 export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
   activeCompanyId,
   onBackToHome,
-  onOpenCheckDetails
+  onOpenCheckDetails,
+  currentUser
 }) => {
   const companyId = activeCompanyId || getActiveCompanyId();
+
+  // Contrôle d'accès RBAC
+  const canValidate = hasPermission(currentUser?.role, "reconcile:validate");
+  const canDelete = hasPermission(currentUser?.role, "cheque:delete");
 
   // Données de base
   const [accounts, setAccounts] = useState<BankAccountRecord[]>([]);
@@ -115,6 +123,12 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
 
   // Lancement du rapprochement automatique (applique les correspondances exactes 100%)
   const handleRunAutoReconcile = async () => {
+    if (!canValidate) {
+      setToastMessage("Autorisation requise : Le lettrage et la validation sont réservés aux signataires et administrateurs.");
+      setTimeout(() => setToastMessage(null), 3500);
+      return;
+    }
+
     if (analysis.exactMatches.length === 0) {
       setToastMessage("Aucune nouvelle correspondance exacte à 100% détectée.");
       setTimeout(() => setToastMessage(null), 3500);
@@ -134,6 +148,12 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
 
   // Rapprochement manuel de la paire sélectionnée
   const handleManualReconcilePair = async () => {
+    if (!canValidate) {
+      setToastMessage("Autorisation requise : Le lettrage manuel est réservé aux signataires et administrateurs.");
+      setTimeout(() => setToastMessage(null), 3500);
+      return;
+    }
+
     if (!selectedChequeId || !selectedLineId) return;
 
     await reconcileChequeWithStatementLine(selectedChequeId, selectedLineId);
@@ -146,6 +166,12 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
 
   // Annulation du rapprochement
   const handleUnreconcile = async (chequeId: string) => {
+    if (!canValidate) {
+      setToastMessage("Autorisation requise : L'annulation du lettrage est réservée aux signataires et administrateurs.");
+      setTimeout(() => setToastMessage(null), 3500);
+      return;
+    }
+
     await unreconcileCheque(chequeId);
     setToastMessage("Rapprochement annulé pour ce chèque.");
     setTimeout(() => setToastMessage(null), 3000);
@@ -154,6 +180,12 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
 
   // Suppression d'un relevé bancaire
   const handleDeleteStatement = async (statementId: string) => {
+    if (!canDelete) {
+      setToastMessage("Action non autorisée : La suppression d'un relevé bancaire est réservée à l'administrateur.");
+      setTimeout(() => setToastMessage(null), 3500);
+      return;
+    }
+
     if (window.confirm("Êtes-vous sûr de vouloir supprimer ce relevé bancaire et ses lignes d'opérations associées ?")) {
       await deleteBankStatement(statementId);
       await loadData();
@@ -233,6 +265,22 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
             <div className="title-with-badge">
               <h1 className="history-main-title">Rapprochement & Grand Livre Bancaire</h1>
               <span className="count-pill">{analysis.summary.totalEmittedCount} chèques</span>
+              {currentUser && !canValidate && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    fontWeight: 600,
+                    background: "rgba(217, 119, 6, 0.12)",
+                    color: "#D97706",
+                    border: "1px solid rgba(217, 119, 6, 0.25)"
+                  }}
+                  title="Ce profil est en mode consultation pour les validations bancaires"
+                >
+                  Mode Consultation Seule
+                </span>
+              )}
             </div>
             <p className="history-main-subtitle">
               Comparaison assistée entre chèques émis et relevés bancaires · Gestion des écarts, lettrage et exports comptables.
@@ -256,7 +304,13 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
               type="button"
               className="btn-action-card"
               onClick={handleRunAutoReconcile}
-              title="Associer automatiquement les chèques et débits avec N° chèque et montant identiques"
+              disabled={!canValidate}
+              style={!canValidate ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
+              title={
+                !canValidate
+                  ? "Lettrage et validation réservés aux profils Signataire et Administrateur"
+                  : "Associer automatiquement les chèques et débits avec N° chèque et montant identiques"
+              }
             >
               <Sparkles size={16} className="btn-action-icon text-gold" />
               <span>Rapprochement auto ({analysis.exactMatches.length})</span>
@@ -466,7 +520,21 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
               type="button"
               className="btn-action-luxury-green"
               onClick={handleManualReconcilePair}
-              style={{ padding: "6px 16px", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}
+              disabled={!canValidate}
+              style={{
+                padding: "6px 16px",
+                fontSize: "12px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                opacity: !canValidate ? 0.55 : 1,
+                cursor: !canValidate ? "not-allowed" : "pointer"
+              }}
+              title={
+                !canValidate
+                  ? "Lettrage manuel réservé aux profils Signataire et Administrateur"
+                  : undefined
+              }
             >
               <CheckCircle2 size={15} />
               <span>Lettrer cette paire</span>
@@ -620,11 +688,17 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({
                             <button
                               type="button"
                               className="btn-table-action-icon unlink-action"
+                              disabled={!canValidate}
+                              style={!canValidate ? { opacity: 0.35, cursor: "not-allowed" } : undefined}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleUnreconcile(c.id);
                               }}
-                              title="Annuler le lettrage de ce chèque"
+                              title={
+                                !canValidate
+                                  ? "Annulation du lettrage réservée aux profils Signataire et Administrateur"
+                                  : "Annuler le lettrage de ce chèque"
+                              }
                             >
                               <Unlink size={14} />
                             </button>

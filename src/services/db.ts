@@ -13,7 +13,12 @@ import type {
   ChequeAttachmentRecord,
   BankStatementRecord,
   BankStatementLineRecord,
-  ReconciliationStatus
+  ReconciliationStatus,
+  UserRecord,
+  UserRole,
+  SecuritySettings,
+  AuditLogRecord,
+  AuditActionType
 } from "../types";
 
 export const HISTORIQUE_STORAGE_KEY = "cheque-studio-history-v1";
@@ -26,6 +31,10 @@ export const CHEQUE_BOOKS_STORAGE_KEY = "cheque-studio-cheque-books-v1";
 export const ATTACHMENTS_STORAGE_KEY = "cheque-studio-attachments-v1";
 export const BANK_STATEMENTS_STORAGE_KEY = "cheque-studio-bank-statements-v1";
 export const BANK_STATEMENT_LINES_STORAGE_KEY = "cheque-studio-bank-statement-lines-v1";
+export const SECURITY_SETTINGS_KEY = "cheque-studio-security-settings-v1";
+export const USERS_STORAGE_KEY = "cheque-studio-users-v1";
+export const AUDIT_LOGS_STORAGE_KEY = "cheque-studio-audit-logs-v1";
+export const ACTIVE_USER_KEY = "vcheque_active_user";
 export const ACTIVE_COMPANY_KEY = "vcheque_active_company_id";
 const DB_PATH = "sqlite:cheques.db";
 
@@ -430,7 +439,41 @@ export async function getDatabase(): Promise<Database | null> {
       await dbInstance.execute(`ALTER TABLE cheques ADD COLUMN is_cashed_declared_without_proof INTEGER DEFAULT 0;`);
     } catch { /* Déjà existante */ }
 
-    // 11. Migration transparente depuis localStorage si les tables SQLite sont vides
+    // 11. Table des utilisateurs (RBAC)
+    await dbInstance.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        role TEXT NOT NULL,
+        pin_hash TEXT,
+        pin_salt TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        last_login_at TEXT
+      );
+    `);
+
+    // 12. Table du grand journal d'audit (Audit Trail)
+    await dbInstance.execute(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        company_id TEXT,
+        timestamp TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        user_name TEXT NOT NULL,
+        user_role TEXT NOT NULL,
+        action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT,
+        description TEXT NOT NULL,
+        metadata TEXT
+      );
+    `);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs(timestamp);`);
+    await dbInstance.execute(`CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);`);
+
+    // 13. Migration transparente depuis localStorage si les tables SQLite sont vides
     await migrateFromLocalStorageIfEmpty(dbInstance);
     await migrateBeneficiariesIfEmpty(dbInstance);
 
@@ -3376,4 +3419,336 @@ export async function markChequeAsCashedDeclared(chequeId: string): Promise<void
     }
   }
 }
+
+/* ==========================================================================
+   MODULE 1.8 : SÉCURITÉ, UTILISATEURS (RBAC) & GRAND JOURNAL D'AUDIT
+   ========================================================================== */
+
+export const DEFAULT_SECURITY_SETTINGS: SecuritySettings = {
+  isAuthEnabled: false, // Désactivé par défaut pour permettre le mode libre
+  autoLockTimeoutMinutes: 5, // Verrouillage après 5 minutes d'inactivité
+  requirePinOnDestructiveActions: true,
+  autoBackupEnabled: false,
+  autoBackupFrequency: "weekly",
+  autoBackupRetentionCount: 10
+};
+
+export const DEFAULT_ADMIN_USER: UserRecord = {
+  id: "user-admin-default",
+  username: "admin",
+  displayName: "Direction / Administrateur",
+  role: "admin",
+  isActive: true,
+  createdAt: "2026-01-01T00:00:00.000Z"
+};
+
+/**
+ * Récupère les paramètres de sécurité
+ */
+export function getSecuritySettings(): SecuritySettings {
+  try {
+    const raw = localStorage.getItem(SECURITY_SETTINGS_KEY);
+    if (raw) {
+      return { ...DEFAULT_SECURITY_SETTINGS, ...JSON.parse(raw) };
+    }
+  } catch {}
+  return DEFAULT_SECURITY_SETTINGS;
+}
+
+/**
+ * Sauvegarde les paramètres de sécurité
+ */
+export async function saveSecuritySettings(settings: SecuritySettings): Promise<void> {
+  localStorage.setItem(SECURITY_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+/**
+ * Récupère l'utilisateur actuellement actif dans la session
+ */
+export function getActiveUser(): UserRecord {
+  try {
+    const raw = localStorage.getItem(ACTIVE_USER_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return DEFAULT_ADMIN_USER;
+}
+
+/**
+ * Définit l'utilisateur actif
+ */
+export function setActiveUser(user: UserRecord): void {
+  localStorage.setItem(ACTIVE_USER_KEY, JSON.stringify(user));
+}
+
+/**
+ * Récupère la liste des utilisateurs autorisés
+ */
+export async function getUsers(): Promise<UserRecord[]> {
+  const db = await getDatabase();
+  let list: UserRecord[] = [];
+
+  try {
+    const raw = localStorage.getItem(USERS_STORAGE_KEY);
+    list = raw ? JSON.parse(raw) : [DEFAULT_ADMIN_USER];
+  } catch {
+    list = [DEFAULT_ADMIN_USER];
+  }
+
+  if (db) {
+    try {
+      const rows = await db.select<any[]>(
+        `SELECT id, username, display_name as displayName, role, pin_hash as pinHash,
+                pin_salt as pinSalt, is_active as isActive, created_at as createdAt,
+                last_login_at as lastLoginAt
+         FROM users ORDER BY created_at ASC;`
+      );
+      if (rows && rows.length > 0) {
+        list = rows.map((r) => ({ ...r, isActive: Boolean(r.isActive) }));
+      }
+    } catch (err) {
+      console.warn("Erreur lecture users SQLite:", err);
+    }
+  }
+
+  if (list.length === 0) {
+    list = [DEFAULT_ADMIN_USER];
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(list));
+  }
+
+  return list;
+}
+
+/**
+ * Enregistre ou met à jour un utilisateur
+ */
+export async function saveUser(user: UserRecord): Promise<void> {
+  // 1. LocalStorage
+  try {
+    const raw = localStorage.getItem(USERS_STORAGE_KEY);
+    const list: UserRecord[] = raw ? JSON.parse(raw) : [DEFAULT_ADMIN_USER];
+    if (!list.some((u) => u.role === "admin")) {
+      list.unshift(DEFAULT_ADMIN_USER);
+    }
+    const idx = list.findIndex((u) => u.id === user.id);
+    if (idx >= 0) {
+      list[idx] = user;
+    } else {
+      list.push(user);
+    }
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(list));
+  } catch {}
+
+  // 2. SQLite
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(
+        `INSERT OR REPLACE INTO users (
+          id, username, display_name, role, pin_hash, pin_salt, is_active, created_at, last_login_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+        [
+          user.id,
+          user.username,
+          user.displayName,
+          user.role,
+          user.pinHash || null,
+          user.pinSalt || null,
+          user.isActive ? 1 : 0,
+          user.createdAt,
+          user.lastLoginAt || null
+        ]
+      );
+    } catch (err) {
+      console.warn("Erreur saveUser SQLite:", err);
+    }
+  }
+
+  await logAuditEvent("user_update", "user", `Mise à jour du profil utilisateur : ${user.displayName} (${user.role})`);
+}
+
+/**
+ * Supprime un utilisateur (interdit de supprimer le dernier admin)
+ */
+export async function deleteUser(id: string): Promise<boolean> {
+  const users = await getUsers();
+  const target = users.find((u) => u.id === id);
+  if (!target || target.role === "admin" || users.length <= 1) return false;
+
+  // LocalStorage
+  try {
+    const filtered = users.filter((u) => u.id !== id);
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(filtered));
+  } catch {}
+
+  // SQLite
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(`DELETE FROM users WHERE id = $1;`, [id]);
+    } catch {}
+  }
+
+  await logAuditEvent("user_delete", "user", `Suppression de l'utilisateur : ${target.displayName} (${target.username})`);
+  return true;
+}
+
+/**
+ * Journalise une opération sensible dans l'Audit Trail
+ */
+export async function logAuditEvent(
+  action: AuditActionType,
+  entityType: "cheque" | "bank_account" | "bank_statement" | "beneficiary" | "backup" | "user" | "security",
+  description: string,
+  metadata?: Record<string, any>
+): Promise<void> {
+  const activeUser = getActiveUser();
+  const companyId = getActiveCompanyId();
+  const now = new Date().toISOString();
+
+  const auditEntry: AuditLogRecord = {
+    id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    companyId,
+    timestamp: now,
+    userId: activeUser.id,
+    userName: activeUser.displayName,
+    userRole: activeUser.role,
+    action,
+    entityType,
+    description,
+    metadata
+  };
+
+  // 1. LocalStorage
+  try {
+    const raw = localStorage.getItem(AUDIT_LOGS_STORAGE_KEY);
+    const logs: AuditLogRecord[] = raw ? JSON.parse(raw) : [];
+    logs.unshift(auditEntry);
+    // Rétention des 1000 derniers événements en local
+    if (logs.length > 1000) logs.length = 1000;
+    localStorage.setItem(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(logs));
+  } catch {}
+
+  // 2. SQLite
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(
+        `INSERT INTO audit_logs (
+          id, company_id, timestamp, user_id, user_name, user_role, action, entity_type, entity_id, description, metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
+        [
+          auditEntry.id,
+          auditEntry.companyId || null,
+          auditEntry.timestamp,
+          auditEntry.userId,
+          auditEntry.userName,
+          auditEntry.userRole,
+          auditEntry.action,
+          auditEntry.entityType,
+          auditEntry.entityId || null,
+          auditEntry.description,
+          metadata ? JSON.stringify(metadata) : null
+        ]
+      );
+    } catch (err) {
+      console.warn("Erreur insertion audit_logs SQLite:", err);
+    }
+  }
+}
+
+/**
+ * Récupère les entrées du journal d'audit filtrées
+ */
+export async function getAuditLogs(params?: {
+  startDate?: string;
+  endDate?: string;
+  action?: string;
+  searchQuery?: string;
+  limit?: number;
+}): Promise<AuditLogRecord[]> {
+  const limit = params?.limit || 500;
+  const db = await getDatabase();
+
+  if (!db) {
+    try {
+      const raw = localStorage.getItem(AUDIT_LOGS_STORAGE_KEY);
+      let list: AuditLogRecord[] = raw ? JSON.parse(raw) : [];
+
+      if (params?.action && params.action !== "all") {
+        list = list.filter((l) => l.action === params.action);
+      }
+      if (params?.startDate) {
+        list = list.filter((l) => l.timestamp.slice(0, 10) >= params.startDate!);
+      }
+      if (params?.endDate) {
+        list = list.filter((l) => l.timestamp.slice(0, 10) <= params.endDate!);
+      }
+      if (params?.searchQuery) {
+        const q = params.searchQuery.toLowerCase();
+        list = list.filter(
+          (l) =>
+            l.description.toLowerCase().includes(q) ||
+            l.userName.toLowerCase().includes(q) ||
+            l.action.toLowerCase().includes(q)
+        );
+      }
+      return list.slice(0, limit);
+    } catch {
+      return [];
+    }
+  }
+
+  try {
+    let query = `
+      SELECT id, company_id as companyId, timestamp, user_id as userId,
+             user_name as userName, user_role as userRole, action,
+             entity_type as entityType, entity_id as entityId, description, metadata
+      FROM audit_logs
+      WHERE 1=1
+    `;
+    const sqlParams: any[] = [];
+
+    if (params?.action && params.action !== "all") {
+      sqlParams.push(params.action);
+      query += ` AND action = $${sqlParams.length}`;
+    }
+    if (params?.startDate) {
+      sqlParams.push(params.startDate);
+      query += ` AND substring(timestamp, 1, 10) >= $${sqlParams.length}`;
+    }
+    if (params?.endDate) {
+      sqlParams.push(params.endDate);
+      query += ` AND substring(timestamp, 1, 10) <= $${sqlParams.length}`;
+    }
+    if (params?.searchQuery) {
+      sqlParams.push(`%${params.searchQuery}%`);
+      query += ` AND (description LIKE $${sqlParams.length} OR user_name LIKE $${sqlParams.length})`;
+    }
+
+    query += ` ORDER BY timestamp DESC LIMIT ${limit};`;
+
+    const rows = await db.select<any[]>(query, sqlParams);
+    return (rows || []).map((r) => ({
+      ...r,
+      metadata: r.metadata ? JSON.parse(r.metadata) : undefined
+    }));
+  } catch (err) {
+    console.warn("Erreur getAuditLogs SQLite:", err);
+    return [];
+  }
+}
+
+/**
+ * Vide le journal d'audit
+ */
+export async function clearAuditLogs(): Promise<void> {
+  localStorage.removeItem(AUDIT_LOGS_STORAGE_KEY);
+  const db = await getDatabase();
+  if (db) {
+    try {
+      await db.execute(`DELETE FROM audit_logs;`);
+    } catch {}
+  }
+}
+
 

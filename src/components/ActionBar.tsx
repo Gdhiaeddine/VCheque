@@ -1,6 +1,18 @@
 import React from "react";
-import { Edit3, Save, Printer, PlusCircle, CheckCircle2, Clock, FileDown, CreditCard, FileSpreadsheet } from "lucide-react";
-import type { ChequeStatus } from "../types";
+import {
+  Edit3,
+  Save,
+  Printer,
+  PlusCircle,
+  CheckCircle2,
+  Clock,
+  FileDown,
+  CreditCard,
+  FileSpreadsheet,
+  Lock
+} from "lucide-react";
+import type { ChequeStatus, UserRecord } from "../types";
+import { hasPermission } from "../services/permissions";
 
 interface ActionBarProps {
   onEdit: () => void;
@@ -13,6 +25,7 @@ interface ActionBarProps {
   showNewButton?: boolean;
   activeStatus?: ChequeStatus | null;
   printCount?: number;
+  currentUser?: UserRecord | null;
 }
 
 export const ActionBar: React.FC<ActionBarProps> = ({
@@ -25,12 +38,17 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onOpenBatchImport,
   showNewButton = true,
   activeStatus,
-  printCount = 0
+  printCount = 0,
+  currentUser
 }) => {
+  const canCreate = hasPermission(currentUser?.role, "cheque:create");
+  const canPrint = hasPermission(currentUser?.role, "cheque:print");
+  const canImportBatch = hasPermission(currentUser?.role, "batch:import");
+
   return (
     <div className="app-action-bar">
       <div className="action-bar-left">
-        {onNew && showNewButton && (
+        {onNew && showNewButton && canCreate && (
           <button
             type="button"
             className="btn-action-card btn-new-cheque"
@@ -55,7 +73,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           type="button"
           className="btn-action-card"
           onClick={onSave}
-          title={activeStatus ? "Mettre à jour ce chèque dans l'historique" : "Enregistrer dans l'historique"}
+          disabled={!canCreate}
+          title={
+            !canCreate
+              ? "Profil Auditeur : Consultation seule (Saisie réservée aux opérateurs et signataires)"
+              : activeStatus
+              ? "Mettre à jour ce chèque dans l'historique"
+              : "Enregistrer dans l'historique"
+          }
+          style={{ opacity: !canCreate ? 0.6 : 1 }}
         >
           <Save size={16} className="btn-action-icon" />
           <span>{activeStatus ? "Mettre à jour" : "Enregistrer"}</span>
@@ -73,7 +99,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           </button>
         )}
 
-        {onOpenBatchImport && (
+        {onOpenBatchImport && canImportBatch && (
           <button
             type="button"
             className="btn-action-card btn-batch-import"
@@ -117,10 +143,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
         <button
           type="button"
-          className="btn-gold-primary btn-print-main"
+          className={`btn-gold-primary btn-print-main ${!canPrint ? "btn-disabled-role" : ""}`}
           onClick={onPrint}
+          title={
+            !canPrint
+              ? "L'impression physique et signature de chèques sont réservées aux profils Signataire et Administrateur"
+              : undefined
+          }
         >
-          <Printer size={18} />
+          {!canPrint ? <Lock size={16} /> : <Printer size={18} />}
           <span>
             {activeStatus === "printed"
               ? `Réimprimer (Copie N°${(printCount || 1) + 1})`

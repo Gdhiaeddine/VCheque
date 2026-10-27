@@ -10,12 +10,22 @@ import {
   Database,
   FolderOpen,
   Download,
+  UploadCloud,
+  FileDown,
+  ShieldAlert,
   CheckCircle2,
   Sliders,
   Type,
   Hash,
   MapPin,
-  Check
+  Check,
+  Lock,
+  Users,
+  History,
+  FileCheck2,
+  ShieldCheck,
+  Clock,
+  KeyRound
 } from "lucide-react";
 import type {
   AppSettings,
@@ -25,17 +35,28 @@ import type {
   ZeroCentsMention,
   NumericSecuritySymbol,
   NumericCurrencySuffix,
-  DecimalSeparator
+  DecimalSeparator,
+  SecuritySettings,
+  UserRecord
 } from "../types";
 import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
 import { exportFullBackup } from "../services/appSettings";
 import { getConfigFilePath, openConfigFileFolder } from "../services/templatesConfig";
+import { getSecuritySettings, saveSecuritySettings, logAuditEvent } from "../services/db";
+import { hasPermission } from "../services/permissions";
 
 interface SettingsPageProps {
   settings: AppSettings;
   onUpdateSettings: (newSettings: AppSettings) => void;
   onResetSettings: () => void;
   onBackToHome: () => void;
+  onOpenUserManager?: () => void;
+  onOpenAuditTrail?: () => void;
+  onOpenBackupRestore?: (initialTab?: "export" | "restore" | "auto") => void;
+  onOpenBackup?: () => void;
+  onOpenRestore?: () => void;
+  onOpenAutoBackup?: () => void;
+  currentUser?: UserRecord | null;
 }
 
 const COMMON_CITIES = ["Alger", "Oran", "Constantine", "Sétif", "Annaba", "Blida", "Batna", "Tlemcen"];
@@ -44,10 +65,37 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   settings,
   onUpdateSettings,
   onResetSettings,
-  onBackToHome
+  onBackToHome,
+  onOpenUserManager,
+  onOpenAuditTrail,
+  onOpenBackupRestore,
+  onOpenBackup,
+  onOpenRestore,
+  onOpenAutoBackup,
+  currentUser
 }) => {
   const [configPath, setConfigPath] = useState<string>("");
   const [saveToast, setSaveToast] = useState<boolean>(false);
+  const [securitySettings, setSecuritySettings] = useState<SecuritySettings>(() => getSecuritySettings());
+
+  const isAdmin = !currentUser || currentUser.role === "admin";
+  const canViewAudit = hasPermission(currentUser?.role, "audit:view");
+  const canRestore = hasPermission(currentUser?.role, "backup:restore");
+
+  const handleOpenBackup = () => {
+    if (onOpenBackup) onOpenBackup();
+    else onOpenBackupRestore?.("export");
+  };
+
+  const handleOpenRestore = () => {
+    if (onOpenRestore) onOpenRestore();
+    else onOpenBackupRestore?.("restore");
+  };
+
+  const handleOpenAutoBackup = () => {
+    if (onOpenAutoBackup) onOpenAutoBackup();
+    else onOpenBackupRestore?.("auto");
+  };
 
   useEffect(() => {
     getConfigFilePath().then(setConfigPath).catch(console.error);
@@ -58,6 +106,27 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     onUpdateSettings(updated);
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 2000);
+  };
+
+  const updateSecuritySetting = async <K extends keyof SecuritySettings>(
+    key: K,
+    value: SecuritySettings[K]
+  ) => {
+    if (!isAdmin) {
+      alert("Modification réservée au profil Administrateur.");
+      return;
+    }
+    const updated = { ...securitySettings, [key]: value };
+    await saveSecuritySettings(updated);
+    setSecuritySettings(updated);
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2000);
+    logAuditEvent(
+      "settings_update",
+      "security",
+      `Mise à jour du réglage de sécurité : ${String(key)} = ${String(value)}`,
+      { key, value }
+    ).catch(console.warn);
   };
 
   // Demo amount for live preview
@@ -457,14 +526,143 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
         </div>
 
-        {/* Section D : Fichiers, Stockage & Sauvegardes */}
+        {/* Section D : Sauvegarde des Données (Exportation) */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <div className="section-title-group">
+              <Download size={18} className="section-icon text-gold" />
+              <div>
+                <h2 className="section-title">Sauvegarde des Données (Exportation)</h2>
+                <span className="section-desc">
+                  Création de copies de sécurité certifiées, archivage scellé et planification
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-card-body">
+            {/* 1. Archive certifiée VCheque */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">Sauvegarde Complète Certifiée (.vcbk) :</strong>
+                <span className="storage-path">
+                  Archive scellée SHA-256 (chèques, comptes, chéquiers, bénéficiaires, modèles et grand journal d'audit)
+                </span>
+              </div>
+
+              {(onOpenBackup || onOpenBackupRestore) && (
+                <button
+                  type="button"
+                  className="btn-storage-action"
+                  onClick={handleOpenBackup}
+                  title="Créer une sauvegarde certifiée scellée"
+                >
+                  <Download size={14} />
+                  <span>Créer une sauvegarde</span>
+                </button>
+              )}
+            </div>
+
+            {/* 2. Sauvegardes automatiques */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">Sauvegardes Automatiques Programmées :</strong>
+                <span className="storage-path">
+                  Génération en tâche de fond (à la fermeture, quotidienne ou hebdomadaire) avec purge des anciennes copies
+                </span>
+              </div>
+
+              {(onOpenAutoBackup || onOpenBackupRestore) && (
+                <button
+                  type="button"
+                  className="btn-storage-action"
+                  onClick={handleOpenAutoBackup}
+                  title="Configurer la fréquence et la rétention des sauvegardes automatiques"
+                >
+                  <Clock size={14} />
+                  <span>Planification auto</span>
+                </button>
+              )}
+            </div>
+
+            {/* 3. Export JSON simple */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">Sauvegarde JSON simple (Héritée) :</strong>
+                <span className="storage-path">
+                  Télécharge un export JSON combinant vos réglages et modèles uniquement
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className="btn-storage-action"
+                onClick={() => exportFullBackup()}
+                title="Exporter une sauvegarde simple au format JSON"
+              >
+                <FileDown size={14} />
+                <span>Export simple (.json)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Section E : Restauration des Données (Importation) */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <div className="section-title-group">
+              <UploadCloud size={18} className="section-icon text-gold" />
+              <div>
+                <h2 className="section-title">Restauration des Données (Importation)</h2>
+                <span className="section-desc">
+                  Contrôle anti-altération SHA-256 et réinjection sécurisée de données
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-card-body">
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">
+                  {canRestore ? "Restauration depuis Archive (.vcbk ou .json) :" : "Restauration (Accès Administrateur) :"}
+                </strong>
+                <span className="storage-path">
+                  {canRestore
+                    ? "Vérification d'intégrité SHA-256 en direct, mode remplacement total ou fusion sans écrasement"
+                    : "Action réservée : la réinjection de base de données requiert les prérogatives du rôle Administrateur"}
+                </span>
+              </div>
+
+              {(onOpenRestore || onOpenBackupRestore) && (
+                <button
+                  type="button"
+                  className="btn-storage-action"
+                  onClick={handleOpenRestore}
+                  disabled={!canRestore}
+                  style={!canRestore ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                  title={
+                    !canRestore
+                      ? "La restauration de base de données est réservée au profil Administrateur"
+                      : "Restaurer vos données depuis une archive certifiée"
+                  }
+                >
+                  {!canRestore ? <Lock size={14} /> : <UploadCloud size={14} />}
+                  <span>Restaurer une sauvegarde</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Section F : Emplacement des Fichiers & Stockage Local */}
         <div className="settings-card">
           <div className="settings-card-header">
             <div className="section-title-group">
               <Database size={18} className="section-icon" />
               <div>
-                <h2 className="section-title">Stockage, Base de données & Sauvegarde</h2>
-                <span className="section-desc">Accès aux fichiers et copies de sécurité</span>
+                <h2 className="section-title">Stockage & Fichiers Locaux</h2>
+                <span className="section-desc">Emplacements physiques des bases de données et fichiers de modèles</span>
               </div>
             </div>
           </div>
@@ -495,22 +693,133 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 <span className="storage-path">cheques.db (Indexation B-Tree 60 FPS)</span>
               </div>
             </div>
+          </div>
+        </div>
 
-            <div className="backup-action-box">
-              <div className="backup-desc">
-                <strong>Sauvegarde complète en 1 clic :</strong>
-                <p>Télécharge un fichier JSON combinant vos réglages, vos modèles bancaires et l'historique complet.</p>
+        {/* Section E : Sécurité, Opérateurs & Traçabilité */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <div className="section-title-group">
+              <ShieldCheck size={18} className="section-icon" />
+              <div>
+                <h2 className="section-title">Sécurité, Opérateurs & Traçabilité</h2>
+                <span className="section-desc">
+                  Accès protégé par code PIN, profils multi-opérateurs et journal d'audit
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-card-body">
+            {/* 1. Mode sécurisé Switch */}
+            <div className="setting-row">
+              <label className="settings-switch-label" style={!isAdmin ? { opacity: 0.7, cursor: "not-allowed" } : undefined}>
+                <input
+                  type="checkbox"
+                  className="settings-switch-input"
+                  checked={securitySettings.isAuthEnabled}
+                  disabled={!isAdmin}
+                  onChange={(e) => updateSecuritySetting("isAuthEnabled", e.target.checked)}
+                />
+                <div className="switch-text-content">
+                  <strong className="switch-title">Activer le Mode Sécurisé (PIN / Mot de passe)</strong>
+                  <span className="switch-desc">
+                    Exige l'authentification par code PIN ou mot de passe à l'ouverture de l'application et au verrouillage.
+                    {!isAdmin && " (Modification réservée au profil Administrateur)"}
+                  </span>
+                </div>
+              </label>
+            </div>
+
+            {/* 2. Délai de verrouillage automatique */}
+            <div className="setting-row">
+              <label className="setting-label">Verrouillage automatique après inactivité :</label>
+              <div className="segmented-control">
+                {[
+                  { value: 0, label: "Jamais" },
+                  { value: 2, label: "2 min" },
+                  { value: 5, label: "5 min" },
+                  { value: 10, label: "10 min" },
+                  { value: 15, label: "15 min" },
+                  { value: 30, label: "30 min" }
+                ].map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    className={`segment-btn ${securitySettings.autoLockTimeoutMinutes === item.value ? "active" : ""}`}
+                    onClick={() => updateSecuritySetting("autoLockTimeoutMinutes", item.value)}
+                    disabled={!securitySettings.isAuthEnabled || !isAdmin}
+                    title={!isAdmin ? "Modification réservée au profil Administrateur" : undefined}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <small className="setting-hint">
+                Verrouille automatiquement l'accès si aucune activité n'est détectée pendant la durée choisie.
+              </small>
+            </div>
+
+            {/* 3. Opérateurs & Permissions */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">
+                  {currentUser?.role === "admin"
+                    ? "Gestion des Opérateurs & Droits (Admin) :"
+                    : "Mon Profil Opérateur :"}
+                </strong>
+                <span className="storage-path">
+                  {currentUser?.role === "admin"
+                    ? "Gestion complète, création d'opérateurs et attribution des 4 rôles"
+                    : `Connecté en tant que ${currentUser?.displayName} (${currentUser?.role})`}
+                </span>
               </div>
 
-              <button
-                type="button"
-                className="btn-backup-download"
-                onClick={() => exportFullBackup()}
-                title="Exporter une sauvegarde complète"
-              >
-                <Download size={15} />
-                <span>Sauvegarde complète (.json)</span>
-              </button>
+              {onOpenUserManager && (
+                <button
+                  type="button"
+                  className="btn-storage-action"
+                  onClick={onOpenUserManager}
+                  title={
+                    currentUser?.role === "admin"
+                      ? "Gérer les opérateurs et les autorisations"
+                      : "Consulter ou modifier mon profil"
+                  }
+                >
+                  <Users size={14} />
+                  <span>
+                    {currentUser?.role === "admin" ? "Gérer les opérateurs" : "Mon profil"}
+                  </span>
+                </button>
+              )}
+            </div>
+
+            {/* 4. Grand Journal d'Audit */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">Grand Journal d'Audit & Traçabilité :</strong>
+                <span className="storage-path">
+                  Historique inaltérable des impressions, annulations et modifications
+                </span>
+              </div>
+
+              {onOpenAuditTrail && (
+                <button
+                  type="button"
+                  className="btn-storage-action"
+                  onClick={onOpenAuditTrail}
+                  disabled={!canViewAudit}
+                  style={!canViewAudit ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                  title={
+                    !canViewAudit
+                      ? "La consultation du journal d'audit est réservée aux auditeurs, signataires et administrateurs"
+                      : "Consulter le journal des opérations sensibles"
+                  }
+                >
+                  <History size={14} />
+                  <span>Consulter le journal</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

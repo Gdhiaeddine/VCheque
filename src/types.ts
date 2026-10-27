@@ -365,3 +365,87 @@ export interface BatchExecutionReport {
     reason?: string;
   }>;
 }
+
+/* ==========================================================================
+   MODULE 1.8 : SÉCURITÉ ET TRAÇABILITÉ (RBAC, AUDIT, SESSIONS, BACKUP)
+   ========================================================================== */
+
+export type UserRole = "admin" | "validator" | "operator" | "auditor";
+
+export interface UserRecord {
+  id: string;
+  username: string; // Ex: "admin", "comptable"
+  displayName: string; // Ex: "Direction Générale", "Mohamed S."
+  role: UserRole;
+  pinHash?: string; // Hachage PBKDF2 avec sel
+  pinSalt?: string;
+  isActive: boolean;
+  createdAt: string;
+  lastLoginAt?: string;
+}
+
+export interface SecuritySettings {
+  isAuthEnabled: boolean;
+  autoLockTimeoutMinutes: number; // 0 = Jamais, 2, 5, 10, 15, 30
+  requirePinOnDestructiveActions: boolean;
+  autoBackupEnabled: boolean;
+  autoBackupFrequency: "on_close" | "daily" | "weekly";
+  autoBackupRetentionCount: number;
+  autoBackupDirectory?: string;
+}
+
+export type AuditActionType =
+  | "auth_login"
+  | "auth_logout"
+  | "auth_lock"
+  | "cheque_create"
+  | "cheque_update"
+  | "cheque_print"
+  | "cheque_cancel"
+  | "account_create"
+  | "account_delete"
+  | "statement_import"
+  | "reconcile_match"
+  | "reconcile_unmatch"
+  | "backup_export"
+  | "backup_restore"
+  | "user_create"
+  | "user_update"
+  | "user_delete"
+  | "settings_update";
+
+export interface AuditLogRecord {
+  id: string;
+  companyId?: string;
+  timestamp: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  action: AuditActionType;
+  entityType: "cheque" | "bank_account" | "bank_statement" | "beneficiary" | "backup" | "user" | "security";
+  entityId?: string;
+  description: string;
+  metadata?: Record<string, any>;
+}
+
+export interface BackupArchive {
+  app: string;
+  version: string;
+  backupDate: string;
+  companyId?: string;
+  checksumSha256: string;
+  payload: {
+    companies: CompanyRecord[];
+    bankAccounts: BankAccountRecord[];
+    chequeBooks: ChequeBookRecord[];
+    cheques: ChequeRecord[];
+    beneficiaries: BeneficiaryRecord[];
+    attachments: ChequeAttachmentRecord[];
+    bankStatements: BankStatementRecord[];
+    bankStatementLines: BankStatementLineRecord[];
+    auditLogs?: AuditLogRecord[];
+    settings?: AppSettings;
+    securitySettings?: SecuritySettings;
+    users?: UserRecord[];
+  };
+}

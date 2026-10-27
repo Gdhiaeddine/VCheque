@@ -25,7 +25,9 @@ import type {
   BankAccountRecord,
   ChequeBookRecord,
   BatchItem,
-  BatchExecutionReport
+  BatchExecutionReport,
+  UserRecord,
+  SecuritySettings
 } from "./types";
 import { PrintModal, getPaperDimensions, calculateChequePosition } from "./components/PrintModal";
 import { PrintConfirmationModal } from "./components/PrintConfirmationModal";
@@ -36,6 +38,11 @@ import { BankAccountsModal } from "./components/BankAccountsModal";
 import { BatchImportModal } from "./components/BatchImportModal";
 import { BatchPrintRunnerModal } from "./components/BatchPrintRunnerModal";
 import { BatchReportModal } from "./components/BatchReportModal";
+import { LockScreenModal } from "./components/LockScreenModal";
+import { UserSessionManagerModal } from "./components/UserSessionManagerModal";
+import { AuditTrailModal } from "./components/AuditTrailModal";
+import { BackupRestoreModal } from "./components/BackupRestoreModal";
+import { hasPermission, getPermissionErrorMessage } from "./services/permissions";
 import {
   saveChequeRecord,
   findDuplicateCheque,
@@ -49,7 +56,13 @@ import {
   saveBatchCheques,
   getActiveChequeBookForAccount,
   incrementChequeBookNumber,
-  updateAccountBalance
+  updateAccountBalance,
+  getSecuritySettings,
+  saveSecuritySettings,
+  getActiveUser,
+  setActiveUser,
+  logAuditEvent,
+  getActiveCompanyId
 } from "./services/db";
 import { loadTemplatesFromConfigFile, saveTemplatesToConfigFile, LOCAL_TEMPLATES_KEY } from "./services/templatesConfig";
 import { loadAppSettings, saveAppSettings, resetAppSettings } from "./services/appSettings";
@@ -236,7 +249,17 @@ export default function App() {
   const [showCompanyModal, setShowCompanyModal] = useState<boolean>(false);
   const [showBankAccountsModal, setShowBankAccountsModal] = useState<boolean>(false);
   const [companyAccounts, setCompanyAccounts] = useState<BankAccountRecord[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() => {
+    try {
+      const compId = getActiveCompanyId();
+      const saved = localStorage.getItem(`vcheque_selected_account_${compId}`);
+      if (saved === "none") return null;
+      if (saved) return saved;
+    } catch {
+      // fallback
+    }
+    return null;
+  });
   const [activeChequeBook, setActiveChequeBook] = useState<ChequeBookRecord | null>(null);
 
   // Module 1.6 : Importation et traitement en lot
@@ -250,6 +273,61 @@ export default function App() {
   const [batchExecutionReport, setBatchExecutionReport] = useState<BatchExecutionReport | null>(null);
   const [allChequeBooks, setAllChequeBooks] = useState<ChequeBookRecord[]>([]);
 
+  // Module 1.8 : Sécurité, Rôles, Authentification & Traçabilité
+  const [securitySettings, setSecuritySettings] = useState<SecuritySettings>(() => getSecuritySettings());
+  const [currentUser, setCurrentUser] = useState<UserRecord | null>(() => getActiveUser());
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    try {
+      const s = getSecuritySettings();
+      return !!s.isAuthEnabled;
+    } catch {
+      return false;
+    }
+  });
+  const [showUserManagerModal, setShowUserManagerModal] = useState<boolean>(false);
+  const [showAuditTrailModal, setShowAuditTrailModal] = useState<boolean>(false);
+  const [showBackupRestoreModal, setShowBackupRestoreModal] = useState<boolean>(false);
+  const [backupModalInitialTab, setBackupModalInitialTab] = useState<"export" | "restore" | "auto">("export");
+
+  // Synchronisation des paramètres de sécurité lors de changements
+  const refreshSecurity = useCallback(() => {
+    const s = getSecuritySettings();
+    setSecuritySettings(s);
+    const u = getActiveUser();
+    setCurrentUser(u);
+  }, []);
+
+  // Verrouillage automatique après inactivité
+  useEffect(() => {
+    if (!securitySettings.isAuthEnabled || !securitySettings.autoLockTimeoutMinutes || securitySettings.autoLockTimeoutMinutes <= 0) {
+      return;
+    }
+
+    let timer: any = null;
+    const timeoutMs = securitySettings.autoLockTimeoutMinutes * 60 * 1000;
+
+    const resetTimer = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        setIsLocked(true);
+        logAuditEvent(
+          "auth_lock",
+          "security",
+          `Verrouillage automatique après ${securitySettings.autoLockTimeoutMinutes} minutes d'inactivité`
+        ).catch(console.warn);
+      }, timeoutMs);
+    };
+
+    const activityEvents = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    activityEvents.forEach((evt) => window.addEventListener(evt, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      activityEvents.forEach((evt) => window.removeEventListener(evt, resetTimer));
+    };
+  }, [securitySettings.isAuthEnabled, securitySettings.autoLockTimeoutMinutes]);
+
   // 6. Feedback / Toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null);
 
@@ -259,12 +337,30 @@ export default function App() {
       const list = await getBankAccounts(companyId);
       setCompanyAccounts(list);
       if (list.length > 0) {
-        setSelectedAccountId((prev) => {
-          const exists = list.some((a) => a.id === prev);
-          if (exists && prev) return prev;
+        const key = `vcheque_selected_account_${companyId}`;
+        const savedPref = localStorage.getItem(key);
+        if (savedPref === "none") {
+          // L'utilisateur a explicitement dissocié le compte : conserver l'état dissocié
+          setSelectedAccountId(null);
+          setActiveChequeBook(null);
+        } else if (savedPref && list.some((a) => a.id === savedPref)) {
+          // Restaurer le compte précédemment sélectionné par l'utilisateur
+          setSelectedAccountId(savedPref);
+        } else if (!savedPref) {
+          // Première utilisation : initialiser avec le compte par défaut de l'entreprise
           const def = list.find((a) => a.isDefault) || list[0];
-          return def.id;
-        });
+          setSelectedAccountId(def.id);
+          try {
+            localStorage.setItem(key, def.id);
+          } catch {}
+        } else {
+          // Le compte précédemment sauvegardé n'existe plus dans la liste : dissocier
+          setSelectedAccountId(null);
+          setActiveChequeBook(null);
+          try {
+            localStorage.setItem(key, "none");
+          } catch {}
+        }
       } else {
         setSelectedAccountId(null);
         setActiveChequeBook(null);
@@ -326,7 +422,7 @@ export default function App() {
           setActiveChequeBook(book);
           if (book && book.currentNumber) {
             setChequeNumber((prev) => (prev.trim() === "" ? book.currentNumber : prev));
-            setShowChequeNumber(true);
+            setShowChequeNumber(appSettings.defaultShowChequeNumber ?? false);
           }
         })
         .catch(console.warn);
@@ -503,11 +599,10 @@ export default function App() {
     setCrossedWithText(appSettings.defaultCrossedWithText !== false);
     if (activeChequeBook && activeChequeBook.currentNumber) {
       setChequeNumber(activeChequeBook.currentNumber);
-      setShowChequeNumber(true);
     } else {
       setChequeNumber("");
-      setShowChequeNumber(appSettings.defaultShowChequeNumber ?? false);
     }
+    setShowChequeNumber(appSettings.defaultShowChequeNumber ?? false);
     setActiveChequeId(null);
     setActiveChequeStatus(null);
     setActivePrintCount(0);
@@ -551,7 +646,7 @@ export default function App() {
       isCrossed,
       crossedWithText,
       showChequeNumber,
-      chequeNumber: showChequeNumber ? (chequeNumber.trim() || undefined) : undefined,
+      chequeNumber: chequeNumber.trim() || undefined,
       createdAt: existingRecord?.createdAt || now,
       updatedAt: now,
       printedAt: existingRecord?.printedAt,
@@ -581,6 +676,11 @@ export default function App() {
   };
 
   const handleSave = async () => {
+    if (!hasPermission(currentUser?.role, "cheque:create")) {
+      setToast({ message: getPermissionErrorMessage("cheque:create"), type: "warning" });
+      return;
+    }
+
     const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
     if (isNaN(rawVal) || rawVal <= 0) {
       setToast({ message: "Veuillez saisir un montant valide avant d'enregistrer le chèque.", type: "warning" });
@@ -657,6 +757,11 @@ export default function App() {
   };
 
   const handlePrint = async () => {
+    if (!hasPermission(currentUser?.role, "cheque:print")) {
+      setToast({ message: getPermissionErrorMessage("cheque:print"), type: "warning" });
+      return;
+    }
+
     const rawVal = parseFloat(amount.replace(/\s/g, "").replace(",", "."));
     if (isNaN(rawVal) || rawVal <= 0) {
       setToast({ message: "Veuillez saisir un montant valide avant d'imprimer.", type: "warning" });
@@ -797,7 +902,7 @@ export default function App() {
       isCrossed,
       crossedWithText,
       showChequeNumber,
-      chequeNumber: showChequeNumber ? (chequeNumber.trim() || undefined) : undefined,
+      chequeNumber: chequeNumber.trim() || undefined,
       createdAt: existingRecord?.createdAt || now,
       updatedAt: now,
       printedAt: existingRecord?.printedAt || now,
@@ -987,6 +1092,11 @@ export default function App() {
     autoIncrementChequeNumber: boolean = true,
     autoRecordBeneficiaries: boolean = true
   ) => {
+    if (!hasPermission(currentUser?.role, "batch:print")) {
+      setToast({ message: getPermissionErrorMessage("batch:print"), type: "warning" });
+      return;
+    }
+
     setBatchRunnerItems(items);
     setBatchRunnerAccountId(targetAccountId);
     setBatchRunnerChequeBookId(targetChequeBookId);
@@ -1010,8 +1120,9 @@ export default function App() {
     setBeneficiary(item.beneficiary);
     setDate(item.date);
     setPlace(item.place);
+    const shouldShowChequeNum = appSettings.defaultShowChequeNumber ?? false;
     setChequeNumber(assignedChequeNumber);
-    setShowChequeNumber(true);
+    setShowChequeNumber(shouldShowChequeNum);
     setSelectedTemplateId(targetTpl.id);
 
     const chequeRec: ChequeRecord = {
@@ -1024,7 +1135,7 @@ export default function App() {
       place: item.place || place,
       date: item.date || date,
       chequeNumber: assignedChequeNumber,
-      showChequeNumber: true,
+      showChequeNumber: shouldShowChequeNum,
       reference: item.reference,
       bankTemplateId: targetTpl.id,
       bankName: targetTpl.name,
@@ -1088,9 +1199,31 @@ export default function App() {
     refreshChequeBooks();
   };
 
+  const handleSelectAccount = (accId: string | null) => {
+    setSelectedAccountId(accId);
+    const compId = activeCompany?.id || getActiveCompanyId();
+    try {
+      const key = `vcheque_selected_account_${compId}`;
+      if (accId) {
+        localStorage.setItem(key, accId);
+      } else {
+        localStorage.setItem(key, "none");
+        setActiveChequeBook(null);
+      }
+    } catch (e) {
+      console.warn("Erreur sauvegarde compte émetteur local:", e);
+    }
+  };
+
   const handleDissociateAccount = () => {
     setSelectedAccountId(null);
     setActiveChequeBook(null);
+    const compId = activeCompany?.id || getActiveCompanyId();
+    try {
+      localStorage.setItem(`vcheque_selected_account_${compId}`, "none");
+    } catch (e) {
+      console.warn("Erreur sauvegarde dissociation local:", e);
+    }
     setToast({
       message: "Compte bancaire et chéquier dissociés du chèque en cours.",
       type: "info"
@@ -1105,12 +1238,8 @@ export default function App() {
     setDate(record.date);
     setIsCrossed(record.isCrossed !== false);
     setCrossedWithText(record.crossedWithText !== false);
-    if (record.chequeNumber) {
-      setChequeNumber(record.chequeNumber);
-      setShowChequeNumber(true);
-    } else {
-      setShowChequeNumber(record.showChequeNumber ?? false);
-    }
+    setChequeNumber(record.chequeNumber || "");
+    setShowChequeNumber(record.showChequeNumber ?? (appSettings.defaultShowChequeNumber ?? false));
     if (templates.some((t) => t.id === record.bankTemplateId)) {
       setSelectedTemplateId(record.bankTemplateId);
     }
@@ -1125,18 +1254,19 @@ export default function App() {
   };
 
   const handleReprintFromHistory = (record: ChequeRecord) => {
+    if (!hasPermission(currentUser?.role, "cheque:print")) {
+      setToast({ message: getPermissionErrorMessage("cheque:print"), type: "warning" });
+      return;
+    }
+
     setAmount(record.amount);
     setBeneficiary(record.beneficiary);
     setPlace(record.place);
     setDate(record.date);
     setIsCrossed(record.isCrossed !== false);
     setCrossedWithText(record.crossedWithText !== false);
-    if (record.chequeNumber) {
-      setChequeNumber(record.chequeNumber);
-      setShowChequeNumber(true);
-    } else {
-      setShowChequeNumber(record.showChequeNumber ?? false);
-    }
+    setChequeNumber(record.chequeNumber || "");
+    setShowChequeNumber(record.showChequeNumber ?? (appSettings.defaultShowChequeNumber ?? false));
     if (templates.some((t) => t.id === record.bankTemplateId)) {
       setSelectedTemplateId(record.bankTemplateId);
     }
@@ -1151,11 +1281,19 @@ export default function App() {
   };
 
   const handleDeleteHistoryRecord = (id: string) => {
+    if (!hasPermission(currentUser?.role, "cheque:delete")) {
+      setToast({ message: getPermissionErrorMessage("cheque:delete"), type: "warning" });
+      return;
+    }
     setHistory((prev) => prev.filter((item) => item.id !== id));
     setToast({ message: "Chèque retiré de l'historique.", type: "info" });
   };
 
   const handleClearHistory = () => {
+    if (!hasPermission(currentUser?.role, "history:clear")) {
+      setToast({ message: getPermissionErrorMessage("history:clear"), type: "warning" });
+      return;
+    }
     if (window.confirm("Êtes-vous sûr de vouloir vider l'historique de tous les chèques ?")) {
       setHistory([]);
       setToast({ message: "Historique vidé.", type: "info" });
@@ -1230,6 +1368,13 @@ export default function App() {
         onOpenSettings={() => setActiveTab("settings")}
         activeCompany={activeCompany}
         onOpenCompanyManager={() => setShowCompanyModal(true)}
+        currentUser={currentUser}
+        onOpenUserManager={() => setShowUserManagerModal(true)}
+        onLockSession={() => {
+          setIsLocked(true);
+          logAuditEvent("auth_lock", "security", "Verrouillage manuel de session").catch(console.warn);
+        }}
+        isAuthEnabled={securitySettings.isAuthEnabled}
       />
 
       {/* 2. Corps de l'application (Barre latérale + Zone centrale + Colonne droite) */}
@@ -1281,6 +1426,7 @@ export default function App() {
             onBackToHome={() => setActiveTab("home")}
             onOpenBatchImport={() => setShowBatchImportModal(true)}
             onNavigateToReconciliation={() => setActiveTab("reconciliation")}
+            currentUser={currentUser}
           />
         ) : activeTab === "beneficiaries" ? (
           <BeneficiariesPage
@@ -1294,20 +1440,55 @@ export default function App() {
             activeCompanyId={activeCompany?.id}
             onBackToHome={() => setActiveTab("home")}
             onOpenCheckDetails={handleCloneToHome}
+            currentUser={currentUser}
           />
         ) : activeTab === "settings" ? (
           <SettingsPage
             settings={appSettings}
             onUpdateSettings={(newSettings) => {
               setAppSettings(newSettings);
+              saveAppSettings(newSettings);
+              if (!activeChequeId) {
+                setShowChequeNumber(newSettings.defaultShowChequeNumber ?? false);
+                setIsCrossed(newSettings.defaultIsCrossed !== false);
+                setCrossedWithText(newSettings.defaultCrossedWithText !== false);
+                if (newSettings.defaultPlace) {
+                  setPlace(newSettings.defaultPlace);
+                }
+              }
               setToast({ message: "Paramètres enregistrés.", type: "success" });
             }}
             onResetSettings={() => {
               const defaults = resetAppSettings();
               setAppSettings(defaults);
+              if (!activeChequeId) {
+                setShowChequeNumber(defaults.defaultShowChequeNumber ?? false);
+                setIsCrossed(defaults.defaultIsCrossed !== false);
+                setCrossedWithText(defaults.defaultCrossedWithText !== false);
+                setPlace(defaults.defaultPlace || "Alger");
+              }
               setToast({ message: "Paramètres réinitialisés par défaut.", type: "info" });
             }}
             onBackToHome={() => setActiveTab("home")}
+            onOpenUserManager={() => setShowUserManagerModal(true)}
+            onOpenAuditTrail={() => setShowAuditTrailModal(true)}
+            onOpenBackupRestore={(tab) => {
+              setBackupModalInitialTab(tab || "export");
+              setShowBackupRestoreModal(true);
+            }}
+            onOpenBackup={() => {
+              setBackupModalInitialTab("export");
+              setShowBackupRestoreModal(true);
+            }}
+            onOpenRestore={() => {
+              setBackupModalInitialTab("restore");
+              setShowBackupRestoreModal(true);
+            }}
+            onOpenAutoBackup={() => {
+              setBackupModalInitialTab("auto");
+              setShowBackupRestoreModal(true);
+            }}
+            currentUser={currentUser}
           />
         ) : (
           <>
@@ -1351,6 +1532,7 @@ export default function App() {
                 }}
                 activeStatus={activeChequeStatus}
                 printCount={activePrintCount}
+                currentUser={currentUser}
               />
 
               <div className="central-cards-grid">
@@ -1375,7 +1557,7 @@ export default function App() {
                   onChangeChequeNumber={setChequeNumber}
                   accounts={companyAccounts}
                   selectedAccountId={selectedAccountId}
-                  onChangeSelectedAccountId={setSelectedAccountId}
+                  onChangeSelectedAccountId={handleSelectAccount}
                   activeChequeBook={activeChequeBook}
                   onOpenBankAccountsModal={() => setShowBankAccountsModal(true)}
                   onDissociateAccount={handleDissociateAccount}
@@ -1824,14 +2006,14 @@ export default function App() {
             handleDissociateAccount();
             return;
           }
-          setSelectedAccountId(acc.id);
+          handleSelectAccount(acc.id);
           setSelectedTemplateId(acc.bankTemplateId);
           if (selectedBook) {
             setActiveChequeBook(selectedBook);
           }
           if (nextChequeNum) {
             setChequeNumber(nextChequeNum);
-            setShowChequeNumber(true);
+            setShowChequeNumber(appSettings.defaultShowChequeNumber ?? false);
           }
           setToast({
             message: `Compte "${acc.label}" sélectionné pour le chèque en cours.`,
@@ -1878,6 +2060,55 @@ export default function App() {
         isOpen={showBatchReportModal}
         onClose={() => setShowBatchReportModal(false)}
         report={batchExecutionReport}
+      />
+
+      {/* Module 1.8 : Sécurité & Traçabilité */}
+      <LockScreenModal
+        isOpen={isLocked}
+        onUnlock={() => {
+          setCurrentUser(getActiveUser());
+          setIsLocked(false);
+          refreshSecurity();
+        }}
+      />
+
+      <UserSessionManagerModal
+        isOpen={showUserManagerModal}
+        onClose={() => {
+          setShowUserManagerModal(false);
+          refreshSecurity();
+        }}
+        currentUser={currentUser}
+        onUserChanged={(user) => {
+          setCurrentUser(user);
+          setToast({
+            message: `Session active : ${user.displayName} (${user.role})`,
+            type: "success"
+          });
+        }}
+      />
+
+      <AuditTrailModal
+        isOpen={showAuditTrailModal}
+        onClose={() => setShowAuditTrailModal(false)}
+      />
+
+      <BackupRestoreModal
+        isOpen={showBackupRestoreModal}
+        onClose={() => {
+          setShowBackupRestoreModal(false);
+          refreshSecurity();
+        }}
+        initialTab={backupModalInitialTab}
+        currentUser={currentUser}
+        onRestoreSuccess={() => {
+          setHistoryRefreshTrigger((n) => n + 1);
+          refreshSecurity();
+          setToast({
+            message: "Données restaurées avec succès depuis l'archive certifiée !",
+            type: "success"
+          });
+        }}
       />
 
       {/* Dedicated Print Layer (Hidden on screen, exact 100% physical mm on printer) */}

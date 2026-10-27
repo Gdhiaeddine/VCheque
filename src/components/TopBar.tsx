@@ -1,17 +1,32 @@
 import React from "react";
-import { Settings, ShieldCheck, Building2, ChevronDown } from "lucide-react";
-import type { CompanyRecord } from "../types";
+import { Settings, ShieldCheck, Building2, ChevronDown, User, Lock, KeyRound } from "lucide-react";
+import type { CompanyRecord, UserRecord } from "../types";
 
 interface TopBarProps {
   onOpenSettings: () => void;
   activeCompany?: CompanyRecord | null;
   onOpenCompanyManager?: () => void;
+  currentUser?: UserRecord | null;
+  onOpenUserManager?: () => void;
+  onLockSession?: () => void;
+  isAuthEnabled?: boolean;
 }
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  validator: "Signataire",
+  operator: "Opérateur",
+  auditor: "Auditeur"
+};
 
 export const TopBar: React.FC<TopBarProps> = ({
   onOpenSettings,
   activeCompany,
-  onOpenCompanyManager
+  onOpenCompanyManager,
+  currentUser,
+  onOpenUserManager,
+  onLockSession,
+  isAuthEnabled
 }) => {
   return (
     <header className="app-topbar">
@@ -45,6 +60,43 @@ export const TopBar: React.FC<TopBarProps> = ({
               </span>
             </div>
             <ChevronDown size={14} className="company-btn-chevron" />
+          </button>
+        )}
+
+        {/* User Session Pill */}
+        {currentUser && onOpenUserManager && (
+          <button
+            type="button"
+            className="topbar-user-btn"
+            onClick={onOpenUserManager}
+            title={
+              currentUser.role === "admin"
+                ? "Gérer les opérateurs ou naviguer entre les comptes (Admin)"
+                : `Mon profil utilisateur (${currentUser.displayName})`
+            }
+          >
+            <div className="user-btn-avatar">
+              <User size={13} />
+            </div>
+            <div className="user-btn-details">
+              <span className="user-btn-name">{currentUser.displayName}</span>
+              <span className={`user-btn-role role-${currentUser.role}`}>
+                {ROLE_LABELS[currentUser.role] || currentUser.role}
+              </span>
+            </div>
+          </button>
+        )}
+
+        {/* Instant Lock Button (Mode Sécurisé) */}
+        {isAuthEnabled && onLockSession && (
+          <button
+            type="button"
+            className="topbar-icon-btn lock-btn"
+            onClick={onLockSession}
+            title="Verrouiller la session immédiatement"
+            aria-label="Verrouiller la session"
+          >
+            <Lock size={16} />
           </button>
         )}
 

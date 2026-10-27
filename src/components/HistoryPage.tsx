@@ -35,12 +35,13 @@ import {
   CreditCard,
   CheckCheck
 } from "lucide-react";
-import type { ChequeRecord, ChequeStatus, BankTemplate, PrintAttemptRecord, PrintAttemptStatus, ChequeAuditEvent, ChequeAuditEventType, BankAccountRecord } from "../types";
+import type { ChequeRecord, ChequeStatus, BankTemplate, PrintAttemptRecord, PrintAttemptStatus, ChequeAuditEvent, ChequeAuditEventType, BankAccountRecord, UserRecord } from "../types";
 import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
 import { exportChequeToPdf } from "../services/pdfExport";
 import { defaultBankTemplates } from "../banksData";
 import { ChequeAttachmentModal } from "./ChequeAttachmentModal";
 import { CashedProofValidationModal } from "./CashedProofValidationModal";
+import { hasPermission, getPermissionErrorMessage } from "../services/permissions";
 import {
   getPaginatedCheques,
   getAllFilteredCheques,
@@ -72,6 +73,7 @@ interface HistoryPageProps {
   onNavigateToReconciliation?: () => void;
   refreshTrigger?: number;
   activeCompanyId?: string;
+  currentUser?: UserRecord | null;
 }
 
 export const HistoryPage: React.FC<HistoryPageProps> = ({
@@ -84,8 +86,16 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   onOpenBatchImport,
   onNavigateToReconciliation,
   refreshTrigger = 0,
-  activeCompanyId
+  activeCompanyId,
+  currentUser
 }) => {
+  // Permissions RBAC basées sur le rôle de l'utilisateur actif
+  const canDelete = hasPermission(currentUser?.role, "cheque:delete");
+  const canClearHistory = hasPermission(currentUser?.role, "history:clear");
+  const canPrint = hasPermission(currentUser?.role, "cheque:print");
+  const canCancel = hasPermission(currentUser?.role, "cheque:cancel");
+  const canClearAudit = hasPermission(currentUser?.role, "audit:clear");
+
   // Query & Filters state
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
@@ -449,6 +459,10 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   };
 
   const handleDeleteAuditLog = async (id: string) => {
+    if (!canClearAudit) {
+      alert("Action non autorisée : La suppression d'écritures du journal d'audit est réservée exclusivement à l'Administrateur.");
+      return;
+    }
     if (window.confirm("Supprimer définitivement cette trace du journal d'audit ?")) {
       await deletePrintAttempt(id);
       await fetchPrintLogs();
@@ -460,6 +474,10 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   };
 
   const handleClearAuditLogs = async () => {
+    if (!canClearAudit) {
+      alert("Action non autorisée : La purge du journal d'audit est réservée exclusivement à l'Administrateur.");
+      return;
+    }
     if (window.confirm("Supprimer l'ensemble du journal d'audit des tentatives d'impression ?")) {
       await clearPrintLogs();
       await fetchPrintLogs();
@@ -544,6 +562,10 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
   // Suppression d'un chèque
   const handleDelete = async (id: string, beneficiary: string) => {
+    if (!canDelete) {
+      alert(getPermissionErrorMessage("cheque:delete"));
+      return;
+    }
     if (window.confirm(`Supprimer ce chèque pour "${beneficiary}" de l'historique ?`)) {
       await deleteChequeRecord(id);
       onDeleteRecord?.(id);
@@ -553,6 +575,10 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
   // Vider tout l'historique
   const handleClearAll = async () => {
+    if (!canClearHistory) {
+      alert(getPermissionErrorMessage("history:clear"));
+      return;
+    }
     if (
       window.confirm(
         "Êtes-vous sûr de vouloir vider l'ensemble de l'historique des chèques ? Cette action est irréversible."
@@ -695,7 +721,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
               <span>Actualiser</span>
             </button>
 
-            {activeView === "cheques" && stats.totalCount > 0 && (
+            {activeView === "cheques" && stats.totalCount > 0 && canClearHistory && (
               <button
                 type="button"
                 className="btn-action-card btn-clear-danger"
@@ -707,7 +733,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
               </button>
             )}
 
-            {activeView === "audit" && printLogs.length > 0 && (
+            {activeView === "audit" && printLogs.length > 0 && canClearAudit && (
               <button
                 type="button"
                 className="btn-action-card btn-clear-danger"
@@ -1264,14 +1290,26 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                         <Edit3 size={14} />
                       </button>
 
-                      <button
-                        type="button"
-                        className="ht-act reprint"
-                        onClick={() => onReprintCheque(item)}
-                        title="Ouvrir la disposition et imprimer ce chèque"
-                      >
-                        <Printer size={14} />
-                      </button>
+                      {canPrint ? (
+                        <button
+                          type="button"
+                          className="ht-act reprint"
+                          onClick={() => onReprintCheque(item)}
+                          title="Ouvrir la disposition et imprimer ce chèque"
+                        >
+                          <Printer size={14} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="ht-act"
+                          style={{ opacity: 0.35, cursor: "not-allowed" }}
+                          disabled
+                          title="Impression réservée aux signataires et administrateurs"
+                        >
+                          <Printer size={14} />
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -1300,28 +1338,42 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
 
                       {/* Bouton Annuler avec motif */}
                       {item.status !== "annule" ? (
-                        <button
-                          type="button"
-                          className="ht-act cancel-btn"
-                          onClick={() => setChequeToCancel(item)}
-                          title="Annuler ce chèque (conserve l'historique avec le motif)"
-                        >
-                          <Ban size={14} />
-                        </button>
+                        canCancel ? (
+                          <button
+                            type="button"
+                            className="ht-act cancel-btn"
+                            onClick={() => setChequeToCancel(item)}
+                            title="Annuler ce chèque (conserve l'historique avec le motif)"
+                          >
+                            <Ban size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="ht-act"
+                            style={{ opacity: 0.35, cursor: "not-allowed" }}
+                            disabled
+                            title="Annulation réservée aux signataires et administrateurs"
+                          >
+                            <Ban size={14} />
+                          </button>
+                        )
                       ) : (
                         <span className="ht-act cancelled-badge" title={`Annulé : ${item.cancellationReason || "Motif non précisé"}`}>
                           <Ban size={14} />
                         </span>
                       )}
 
-                      <button
-                        type="button"
-                        className="ht-act delete"
-                        onClick={() => handleDelete(item.id, item.beneficiary)}
-                        title="Supprimer définitivement de la base"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          className="ht-act delete"
+                          onClick={() => handleDelete(item.id, item.beneficiary)}
+                          title="Supprimer définitivement de la base"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
