@@ -27,8 +27,17 @@ import type {
   BatchItem,
   BatchExecutionReport,
   UserRecord,
-  SecuritySettings
+  SecuritySettings,
+  CalibrationTestFillingData,
+  PrinterPreset
 } from "./types";
+import {
+  loadPrinterPresets,
+  savePrinterPresets,
+  getActivePrinterPreset,
+  presetToPrintSettings,
+  upsertPrinterPreset
+} from "./services/printerPresets";
 import { PrintModal, getPaperDimensions, calculateChequePosition } from "./components/PrintModal";
 import { PrintConfirmationModal } from "./components/PrintConfirmationModal";
 import { ExportPdfModal } from "./components/ExportPdfModal";
@@ -43,6 +52,8 @@ import { UserSessionManagerModal } from "./components/UserSessionManagerModal";
 import { AuditTrailModal } from "./components/AuditTrailModal";
 import { BackupRestoreModal } from "./components/BackupRestoreModal";
 import { InitialSetupWizard } from "./components/InitialSetupWizard";
+import { PrinterCalibrationWizardModal } from "./components/PrinterCalibrationWizardModal";
+import { getCalibrationSpecimensLayout } from "./services/pdfExport";
 import { isSetupCompleted } from "./services/setupConfig";
 import { hasPermission, getPermissionErrorMessage } from "./services/permissions";
 import {
@@ -199,6 +210,50 @@ export default function App() {
     };
   });
 
+  // Profils d'imprimante (Presets matériels multiples)
+  const [printerPresets, setPrinterPresets] = useState<PrinterPreset[]>(() => loadPrinterPresets());
+  const [activePresetId, setActivePresetId] = useState<string>(() => {
+    return getActivePrinterPreset().id;
+  });
+
+  const handlePresetsChange = (updated: PrinterPreset[]) => {
+    setPrinterPresets(updated);
+    savePrinterPresets(updated);
+    const active = updated.find((p) => p.isDefault) || updated[0];
+    if (active) {
+      setActivePresetId(active.id);
+      setPrintSettings(presetToPrintSettings(active));
+    }
+  };
+
+  const handleSavePreset = (presetData: Partial<PrinterPreset> & { name: string }) => {
+    const { presets: updated, savedPreset } = upsertPrinterPreset(presetData, printerPresets);
+    setPrinterPresets(updated);
+    if (savedPreset.isDefault || updated.length === 1) {
+      setActivePresetId(savedPreset.id);
+      setPrintSettings(presetToPrintSettings(savedPreset));
+    }
+  };
+
+  // Sauvegarde persistante des réglages d'impression généraux
+  useEffect(() => {
+    try {
+      localStorage.setItem(PRINT_SETTINGS_KEY, JSON.stringify(printSettings));
+    } catch (e) {
+      console.warn("Erreur sauvegarde locale printSettings:", e);
+    }
+  }, [printSettings]);
+
+  // Assistant de Calibrage & Gabarit 3 Spécimens
+  const [isCalibrationWizardOpen, setIsCalibrationWizardOpen] = useState<boolean>(false);
+  const [isPrintingCalibrationSheet, setIsPrintingCalibrationSheet] = useState<boolean>(false);
+  const [calibrationIncludeBackground, setCalibrationIncludeBackground] = useState<boolean>(true);
+  const [calibrationTestFilling, setCalibrationTestFilling] = useState<{
+    template: BankTemplate;
+    settings: PrintSettings;
+    data: CalibrationTestFillingData;
+  } | null>(null);
+
   // 4. Historique State (Chèques enregistrés et imprimés)
   const [historyRefreshTrigger, setHistoryRefreshTrigger] = useState<number>(0);
   const [history, setHistory] = useState<ChequeRecord[]>(() => {
@@ -316,6 +371,8 @@ export default function App() {
       message: `Bienvenue dans VCheque Studio ! Configuration initiale réussie pour "${result.company.name}".`,
       type: "success"
     });
+    // Ouvre automatiquement l'assistant de calibrage d'impression recommandé
+    setIsCalibrationWizardOpen(true);
   };
 
   // Verrouillage automatique après inactivité
@@ -985,6 +1042,39 @@ export default function App() {
     window.print();
   };
 
+  // Calibrage : Lancer l'impression de la feuille physique A4 avec 3 spécimens
+  const handlePrintCalibrationSheet = (includeImage: boolean = true) => {
+    setCalibrationIncludeBackground(includeImage);
+    setIsPrintingCalibrationSheet(true);
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        setIsPrintingCalibrationSheet(false);
+      }, 500);
+    }, 250);
+  };
+
+  // Calibrage : Lancer l'impression du texte de test sur le spécimen découpé
+  const handlePrintTestFilling = (
+    template: BankTemplate,
+    settings: PrintSettings,
+    testData: CalibrationTestFillingData
+  ) => {
+    setCalibrationTestFilling({
+      template,
+      settings,
+      data: testData
+    });
+    setPrintSettings(settings);
+
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        setCalibrationTestFilling(null);
+      }, 1500);
+    }, 250);
+  };
+
   // =========================================================================
   // MODULE 1.6 : IMPORTATION ET TRAITEMENT EN LOT
   // =========================================================================
@@ -1433,6 +1523,7 @@ export default function App() {
               });
             }}
             onBackToHome={() => setActiveTab("home")}
+            onOpenCalibrationWizard={() => setIsCalibrationWizardOpen(true)}
           />
         ) : activeTab === "history" ? (
           <HistoryPage
@@ -1510,7 +1601,10 @@ export default function App() {
               setShowBackupRestoreModal(true);
             }}
             onOpenInitialSetup={() => setIsInitialSetupOpen(true)}
+            onOpenCalibrationWizard={() => setIsCalibrationWizardOpen(true)}
             currentUser={currentUser}
+            presets={printerPresets}
+            onPresetsChange={handlePresetsChange}
           />
         ) : (
           <>
@@ -1776,6 +1870,17 @@ export default function App() {
         formattedNumeric={formattedNumeric}
         isReprint={activeChequeStatus === "printed" || activePrintCount > 0}
         printCount={activePrintCount}
+        onOpenCalibrationWizard={() => {
+          setIsPrintModalOpen(false);
+          setIsCalibrationWizardOpen(true);
+        }}
+        presets={printerPresets}
+        activePresetId={activePresetId}
+        onSelectPreset={(p) => {
+          setActivePresetId(p.id);
+          setPrintSettings(presetToPrintSettings(p));
+        }}
+        onSavePreset={handleSavePreset}
       />
 
       {/* Modal d'Exportation PDF haute précision (Format chèque 1:1 ou Feuille A4, avec ou sans fond bancaire) */}
@@ -2141,30 +2246,281 @@ export default function App() {
         />
       )}
 
+      {/* Assistant de Calibrage Imprimante & Gabarit 3 Spécimens Réels */}
+      {isCalibrationWizardOpen && (
+        <PrinterCalibrationWizardModal
+          isOpen={isCalibrationWizardOpen}
+          onClose={() => setIsCalibrationWizardOpen(false)}
+          templates={templates}
+          selectedTemplateId={selectedTemplateId}
+          onSelectTemplate={setSelectedTemplateId}
+          onSaveTemplate={handleSaveCustomTemplate}
+          globalPrintSettings={printSettings}
+          onChangeGlobalPrintSettings={(newSettings) => {
+            setPrintSettings(newSettings);
+            try {
+              localStorage.setItem(PRINT_SETTINGS_KEY, JSON.stringify(newSettings));
+            } catch {}
+          }}
+          onApplyPositionsToAll={(positions) => {
+            setTemplates((prev) =>
+              prev.map((t) => ({
+                ...t,
+                positions: JSON.parse(JSON.stringify(positions))
+              }))
+            );
+            setToast({
+              message: "Grille de coordonnées appliquée avec succès à tous les modèles bancaires.",
+              type: "success"
+            });
+          }}
+          onPrintCalibrationSheet={handlePrintCalibrationSheet}
+          onPrintTestFilling={handlePrintTestFilling}
+          presets={printerPresets}
+          activePresetId={activePresetId}
+          onSavePreset={handleSavePreset}
+          onSelectPreset={(id) => {
+            setActivePresetId(id);
+            const p = printerPresets.find((item) => item.id === id);
+            if (p) setPrintSettings(presetToPrintSettings(p));
+          }}
+        />
+      )}
+
+      {/* Feuille de Calibrage Physique (3 spécimens découpables A4) */}
+      {isPrintingCalibrationSheet && (() => {
+        const layout = getCalibrationSpecimensLayout(currentTemplate.width, currentTemplate.height);
+        return (
+          <div className="print-calibration-sheet" style={{ width: "210mm", height: "297mm", position: "relative" }}>
+            <div
+              className="pcs-header-banner"
+              style={{
+                position: "absolute",
+                left: "10mm",
+                top: "4mm",
+                width: "190mm",
+                height: "11mm",
+                border: "0.5px solid #999",
+                background: "#f9f9f9",
+                textAlign: "center",
+                padding: "1.5mm",
+                boxSizing: "border-box"
+              }}
+            >
+              <div style={{ fontSize: "8.5pt", fontWeight: "bold", color: "#111" }}>
+                VCHEQUE STUDIO — GABARIT DE CALIBRAGE PHYSIQUE & 3 SPÉCIMENS RÉELS (A4 - 100%)
+              </div>
+              <div style={{ fontSize: "6pt", color: "#555", marginTop: "0.5mm" }}>
+                Ne pas ajuster à la page. Découpez les 3 spécimens le long des pointillés ✂ pour vos essais d'alignement.
+              </div>
+            </div>
+
+            {layout.specimens.map((spec) => (
+              <div
+                key={spec.specimenIndex}
+                className="pcs-specimen-card"
+                style={{
+                  position: "absolute",
+                  left: `${spec.x}mm`,
+                  top: `${spec.y}mm`,
+                  width: `${spec.width}mm`,
+                  height: `${spec.height}mm`,
+                  border: "1.5px dashed #444",
+                  boxSizing: "border-box",
+                  backgroundColor: "#fff",
+                  backgroundImage: (calibrationIncludeBackground && currentTemplate.backgroundImage)
+                    ? `url(${currentTemplate.backgroundImage})`
+                    : undefined,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                  backgroundRepeat: "no-repeat",
+                  overflow: "hidden"
+                }}
+              >
+                {/* Règle horizontale */}
+                <div style={{ position: "absolute", left: 0, top: 0, width: "100%", height: "4.5mm", borderBottom: "0.5px solid #bbb" }}>
+                  {Array.from({ length: Math.floor(spec.width) + 1 }).map((_, mm) => {
+                    const is10 = mm % 10 === 0;
+                    const is5 = mm % 5 === 0;
+                    return (
+                      <div
+                        key={mm}
+                        style={{
+                          position: "absolute",
+                          left: `${mm}mm`,
+                          bottom: 0,
+                          width: "0.5px",
+                          height: is10 ? "3.5mm" : is5 ? "2mm" : "1mm",
+                          backgroundColor: "#666"
+                        }}
+                      >
+                        {is10 && mm > 0 && mm < Math.floor(spec.width) && (
+                          <span style={{ position: "absolute", left: "-2mm", top: "-3.5mm", fontSize: "4.5pt", color: "#666" }}>
+                            {mm}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Règle verticale */}
+                <div style={{ position: "absolute", left: 0, top: 0, width: "4.5mm", height: "100%", borderRight: "0.5px solid #bbb" }}>
+                  {Array.from({ length: Math.floor(spec.height) + 1 }).map((_, mm) => {
+                    const is10 = mm % 10 === 0;
+                    const is5 = mm % 5 === 0;
+                    return (
+                      <div
+                        key={mm}
+                        style={{
+                          position: "absolute",
+                          top: `${mm}mm`,
+                          right: 0,
+                          height: "0.5px",
+                          width: is10 ? "3.5mm" : is5 ? "2mm" : "1mm",
+                          backgroundColor: "#666"
+                        }}
+                      >
+                        {is10 && mm > 0 && mm < Math.floor(spec.height) && (
+                          <span style={{ position: "absolute", right: "4mm", top: "-1.5mm", fontSize: "4.5pt", color: "#666" }}>
+                            {mm}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* En-tête du spécimen */}
+                <div style={{ position: "absolute", left: "12mm", top: "7mm", fontSize: "7pt", fontWeight: "bold", color: "#1e3a8a" }}>
+                  SPÉCIMEN D'ESSAI N° {spec.specimenIndex} — {currentTemplate.name.toUpperCase()} ({spec.width} × {spec.height} mm)
+                </div>
+                <div style={{ position: "absolute", left: "12mm", top: "10.5mm", fontSize: "5pt", color: "#777" }}>
+                  [ ✂ Découper soigneusement le long des pointillés extérieurs pour obtenir votre chèque d'essai ]
+                </div>
+
+                {/* Tracé des zones standard du chèque */}
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${currentTemplate.positions.beneficiary.x}mm`,
+                    top: `${currentTemplate.positions.beneficiary.y}mm`,
+                    fontSize: "5pt",
+                    color: "#999"
+                  }}
+                >
+                  Zone Bénéficiaire (À l'ordre de)
+                  <div style={{ width: "85mm", borderBottom: "0.5px solid #ccc", marginTop: "1mm" }} />
+                </div>
+
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${currentTemplate.positions.words.x}mm`,
+                    top: `${currentTemplate.positions.words.y}mm`,
+                    fontSize: "5pt",
+                    color: "#999"
+                  }}
+                >
+                  Montant en lettres (L1)
+                  <div style={{ width: "95mm", borderBottom: "0.5px solid #ccc", marginTop: "1mm" }} />
+                </div>
+
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${currentTemplate.positions.wordsSecondLine.x}mm`,
+                    top: `${currentTemplate.positions.wordsSecondLine.y}mm`,
+                    fontSize: "5pt",
+                    color: "#999"
+                  }}
+                >
+                  Montant en lettres (L2)
+                  <div style={{ width: "95mm", borderBottom: "0.5px solid #ccc", marginTop: "1mm" }} />
+                </div>
+
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${currentTemplate.positions.numeric.x - 25}mm`,
+                    top: `${currentTemplate.positions.numeric.y - 4}mm`,
+                    width: "27mm",
+                    height: "8mm",
+                    border: "0.5px solid #bbb",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "5pt",
+                    color: "#999"
+                  }}
+                >
+                  # Montant Chiffré #
+                </div>
+
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${currentTemplate.positions.place.x}mm`,
+                    top: `${currentTemplate.positions.place.y}mm`,
+                    fontSize: "5pt",
+                    color: "#999"
+                  }}
+                >
+                  Fait à : _________ Le : _________
+                </div>
+
+                <div
+                  style={{
+                    position: "absolute",
+                    right: "10mm",
+                    bottom: "6mm",
+                    width: "36mm",
+                    height: "14mm",
+                    border: "0.5px solid #bbb",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "5pt",
+                    color: "#999"
+                  }}
+                >
+                  Cadre Signature
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Dedicated Print Layer (Hidden on screen, exact 100% physical mm on printer) */}
-      {(() => {
+      {!isPrintingCalibrationSheet && (() => {
+        const isTestFilling = calibrationTestFilling !== null;
+        const effectiveSettings = isTestFilling ? calibrationTestFilling.settings : printSettings;
+        const effectiveTemplate = isTestFilling ? calibrationTestFilling.template : currentTemplate;
+        const effectivePositions = effectiveTemplate.positions;
+
         const paper = getPaperDimensions(
-          printSettings.paperFormat,
-          currentTemplate.width,
-          currentTemplate.height
+          effectiveSettings.paperFormat,
+          effectiveTemplate.width,
+          effectiveTemplate.height
         );
         const pos = calculateChequePosition(
           paper.width,
           paper.height,
-          currentTemplate.width,
-          currentTemplate.height,
-          printSettings.placement,
-          printSettings.offsetX,
-          printSettings.offsetY,
-          printSettings.rotation
+          effectiveTemplate.width,
+          effectiveTemplate.height,
+          effectiveSettings.placement,
+          effectiveSettings.offsetX,
+          effectiveSettings.offsetY,
+          effectiveSettings.rotation
         );
 
-        const isRotated90 = printSettings.rotation === 90 || printSettings.rotation === 270;
+        const isRotated90 = effectiveSettings.rotation === 90 || effectiveSettings.rotation === 270;
         const wrapperLeft = isRotated90
-          ? pos.left + (pos.effW - currentTemplate.width) / 2
+          ? pos.left + (pos.effW - effectiveTemplate.width) / 2
           : pos.left;
         const wrapperTop = isRotated90
-          ? pos.top + (pos.effH - currentTemplate.height) / 2
+          ? pos.top + (pos.effH - effectiveTemplate.height) / 2
           : pos.top;
 
         return (
@@ -2180,15 +2536,15 @@ export default function App() {
               style={{
                 left: `${wrapperLeft}mm`,
                 top: `${wrapperTop}mm`,
-                width: `${currentTemplate.width}mm`,
-                height: `${currentTemplate.height}mm`,
-                transform: printSettings.rotation ? `rotate(${printSettings.rotation}deg)` : undefined,
+                width: `${effectiveTemplate.width}mm`,
+                height: `${effectiveTemplate.height}mm`,
+                transform: effectiveSettings.rotation ? `rotate(${effectiveSettings.rotation}deg)` : undefined,
                 transformOrigin: "center center",
-                border: printSettings.showBorderGuide ? "1px dashed #777777" : "none"
+                border: effectiveSettings.showBorderGuide ? "1px dashed #777777" : "none"
               }}
             >
               {/* Barres d'encaissement Chèque barré (//) avec ou sans texte dans le coin supérieur gauche */}
-              {isCrossed && (
+              {!isTestFilling && isCrossed && (
                 <div
                   className="print-crossed-bars"
                   style={{
@@ -2230,25 +2586,31 @@ export default function App() {
               <div
                 className="print-field"
                 style={{
-                  left: `${currentTemplate.positions.beneficiary.x}mm`,
-                  top: `${currentTemplate.positions.beneficiary.y}mm`,
-                  fontSize: `${currentTemplate.positions.beneficiary.size}mm`
+                  left: `${effectivePositions.beneficiary.x}mm`,
+                  top: `${effectivePositions.beneficiary.y}mm`,
+                  fontSize: `${effectivePositions.beneficiary.size}mm`
                 }}
               >
-                {beneficiary}
+                {isTestFilling ? calibrationTestFilling.data.beneficiary : beneficiary}
               </div>
 
               {(() => {
-                const [wL1, wL2] = splitWordsByLimit(words, currentTemplate.wordsMaxLineLength || 55);
+                const wL1 = isTestFilling
+                  ? calibrationTestFilling.data.wordsL1
+                  : splitWordsByLimit(words, effectiveTemplate.wordsMaxLineLength || 55)[0];
+                const wL2 = isTestFilling
+                  ? calibrationTestFilling.data.wordsL2
+                  : splitWordsByLimit(words, effectiveTemplate.wordsMaxLineLength || 55)[1];
+
                 return (
                   <>
                     <div
                       className="print-field"
                       style={{
-                        left: `${currentTemplate.positions.words.x}mm`,
-                        top: `${currentTemplate.positions.words.y}mm`,
-                        fontSize: `${currentTemplate.positions.words.size}mm`,
-                        maxWidth: currentTemplate.wordsLine1MaxWidth ? `${currentTemplate.wordsLine1MaxWidth}mm` : undefined
+                        left: `${effectivePositions.words.x}mm`,
+                        top: `${effectivePositions.words.y}mm`,
+                        fontSize: `${effectivePositions.words.size}mm`,
+                        maxWidth: effectiveTemplate.wordsLine1MaxWidth ? `${effectiveTemplate.wordsLine1MaxWidth}mm` : undefined
                       }}
                     >
                       {wL1}
@@ -2258,10 +2620,10 @@ export default function App() {
                       <div
                         className="print-field"
                         style={{
-                          left: `${currentTemplate.positions.wordsSecondLine.x}mm`,
-                          top: `${currentTemplate.positions.wordsSecondLine.y}mm`,
-                          fontSize: `${currentTemplate.positions.wordsSecondLine.size}mm`,
-                          maxWidth: currentTemplate.wordsLine2MaxWidth ? `${currentTemplate.wordsLine2MaxWidth}mm` : undefined
+                          left: `${effectivePositions.wordsSecondLine.x}mm`,
+                          top: `${effectivePositions.wordsSecondLine.y}mm`,
+                          fontSize: `${effectivePositions.wordsSecondLine.size}mm`,
+                          maxWidth: effectiveTemplate.wordsLine2MaxWidth ? `${effectiveTemplate.wordsLine2MaxWidth}mm` : undefined
                         }}
                       >
                         {wL2}
@@ -2274,48 +2636,51 @@ export default function App() {
               <div
                 className="print-field numeric"
                 style={{
-                  left: `${currentTemplate.positions.numeric.x}mm`,
-                  top: `${currentTemplate.positions.numeric.y}mm`,
-                  fontSize: `${currentTemplate.positions.numeric.size}mm`,
-                  textAlign: currentTemplate.positions.numeric.align || "right"
+                  left: effectivePositions.numeric.align === "right" ? undefined : `${effectivePositions.numeric.x}mm`,
+                  right: effectivePositions.numeric.align === "right" ? `${effectiveTemplate.width - effectivePositions.numeric.x}mm` : undefined,
+                  top: `${effectivePositions.numeric.y}mm`,
+                  fontSize: `${effectivePositions.numeric.size}mm`,
+                  textAlign: effectivePositions.numeric.align || "right"
                 }}
               >
-                {formattedNumeric}
+                {isTestFilling ? calibrationTestFilling.data.numeric : formattedNumeric}
               </div>
 
               <div
                 className="print-field"
                 style={{
-                  left: `${currentTemplate.positions.place.x}mm`,
-                  top: `${currentTemplate.positions.place.y}mm`,
-                  fontSize: `${currentTemplate.positions.place.size}mm`
+                  left: `${effectivePositions.place.x}mm`,
+                  top: `${effectivePositions.place.y}mm`,
+                  fontSize: `${effectivePositions.place.size}mm`
                 }}
               >
-                {place}
+                {isTestFilling ? calibrationTestFilling.data.place : place}
               </div>
 
               <div
                 className="print-field"
                 style={{
-                  left: `${currentTemplate.positions.date.x}mm`,
-                  top: `${currentTemplate.positions.date.y}mm`,
-                  fontSize: `${currentTemplate.positions.date.size}mm`
+                  left: `${effectivePositions.date.x}mm`,
+                  top: `${effectivePositions.date.y}mm`,
+                  fontSize: `${effectivePositions.date.size}mm`
                 }}
               >
-                {date ? date.split("-").reverse().join("/") : ""}
+                {isTestFilling
+                  ? calibrationTestFilling.data.date
+                  : (date ? date.split("-").reverse().join("/") : "")}
               </div>
 
-              {showChequeNumber && chequeNumber && currentTemplate.positions.chequeNumber && (
+              {((isTestFilling && effectivePositions.chequeNumber) || (showChequeNumber && chequeNumber && effectivePositions.chequeNumber)) && (
                 <div
                   className="print-field"
                   style={{
-                    left: `${currentTemplate.positions.chequeNumber.x}mm`,
-                    top: `${currentTemplate.positions.chequeNumber.y}mm`,
-                    fontSize: `${currentTemplate.positions.chequeNumber.size}mm`,
-                    textAlign: currentTemplate.positions.chequeNumber.align || "left"
+                    left: `${effectivePositions.chequeNumber.x}mm`,
+                    top: `${effectivePositions.chequeNumber.y}mm`,
+                    fontSize: `${effectivePositions.chequeNumber.size}mm`,
+                    textAlign: effectivePositions.chequeNumber.align || "left"
                   }}
                 >
-                  {chequeNumber}
+                  {isTestFilling ? (calibrationTestFilling.data.chequeNumber || "0012345") : chequeNumber}
                 </div>
               )}
             </div>

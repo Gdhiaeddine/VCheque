@@ -653,13 +653,21 @@ export const InitialSetupWizard: React.FC<InitialSetupWizardProps> = ({
                   </div>
                 </div>
 
-                <div className="setup-summary-card" style={{ marginBottom: 0 }}>
+                <div className="setup-summary-card" style={{ marginBottom: "12px" }}>
                   <div className="setup-summary-header">
                     <HardDrive size={15} />
                     <span>Emplacement de Stockage Local</span>
                   </div>
                   <div style={{ fontSize: "11.5px", fontFamily: "var(--font-mono)", color: "var(--text-secondary)", wordBreak: "break-all" }}>
                     {dataDir}
+                  </div>
+                </div>
+
+                {/* Banner étape suivante : Calibrage d'impression */}
+                <div style={{ padding: "12px 14px", background: "rgba(212, 175, 55, 0.08)", border: "1px solid rgba(212, 175, 55, 0.3)", borderRadius: "10px", display: "flex", alignItems: "center", gap: "12px" }}>
+                  <Sparkles size={18} style={{ color: "var(--gold-dark)", flexShrink: 0 }} />
+                  <div style={{ fontSize: "12px", color: "var(--text-primary)", lineHeight: "1.4" }}>
+                    <strong>Étape suivante recommandée :</strong> L'assistant de calibrage imprimante s'ouvrira pour vous proposer d'imprimer une feuille de test A4 avec <strong>3 chèques exemplaires réels à découper ✂️</strong> afin d'ajuster l'alignement sans gaspiller de vrais chéquiers.
                   </div>
                 </div>
               </div>

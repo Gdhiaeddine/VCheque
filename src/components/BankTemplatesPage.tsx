@@ -40,6 +40,7 @@ interface BankTemplatesPageProps {
   onDeleteTemplate: (id: string) => void;
   onImportTemplates?: (templates: BankTemplate[]) => void;
   onBackToHome: () => void;
+  onOpenCalibrationWizard?: () => void;
 }
 
 const FIELD_LABELS: Record<FieldKey, string> = {
@@ -59,7 +60,8 @@ export const BankTemplatesPage: React.FC<BankTemplatesPageProps> = ({
   onSaveTemplate,
   onDeleteTemplate,
   onImportTemplates,
-  onBackToHome
+  onBackToHome,
+  onOpenCalibrationWizard
 }) => {
   // State: Template selection / edit mode
   const [editingTemplate, setEditingTemplate] = useState<BankTemplate | null>(null);
@@ -357,6 +359,19 @@ function optimizeLogoFile(file: File): Promise<string> {
           </div>
 
           <div className="header-actions-group">
+            {onOpenCalibrationWizard && (
+              <button
+                type="button"
+                className="btn-calib-print"
+                style={{ padding: "8px 14px", fontSize: "12px" }}
+                onClick={onOpenCalibrationWizard}
+                title="Lancer l'assistant de calibrage avec 3 spécimens d'essai"
+              >
+                <Sliders size={15} />
+                <span>Calibrage Imprimante (3 Spécimens)</span>
+              </button>
+            )}
+
             <button
               type="button"
               className="btn-action-luxury-green"

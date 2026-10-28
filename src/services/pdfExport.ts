@@ -327,3 +327,264 @@ export async function exportChequeToPdf(options: ExportPdfOptions): Promise<Expo
     return { success: true, canceled: false };
   }
 }
+
+export interface CalibrationSpecimenLayout {
+  specimenIndex: number;
+  label: string;
+  x: number; // mm
+  y: number; // mm
+  width: number; // mm
+  height: number; // mm
+}
+
+export interface CalibrationPageLayout {
+  pageWidth: number;
+  pageHeight: number;
+  headerHeight: number;
+  specimens: CalibrationSpecimenLayout[];
+}
+
+/**
+ * Calcule l'agencement millimétrique exact des 3 spécimens sur une page A4
+ */
+export function getCalibrationSpecimensLayout(
+  chequeWidth: number = 175,
+  chequeHeight: number = 80
+): CalibrationPageLayout {
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const safeChequeWidth = Math.min(chequeWidth || 175, 195);
+  const safeChequeHeight = Math.min(chequeHeight || 80, 88);
+  const left = (pageWidth - safeChequeWidth) / 2;
+
+  const totalChequesHeight = 3 * safeChequeHeight;
+  const remainingHeight = pageHeight - totalChequesHeight;
+  const headerHeight = Math.max(14, Math.min(20, remainingHeight * 0.35));
+  const gap = Math.max(4, (remainingHeight - headerHeight - 8) / 2);
+
+  const specimens: CalibrationSpecimenLayout[] = [];
+  for (let i = 0; i < 3; i++) {
+    const top = headerHeight + i * (safeChequeHeight + gap);
+    specimens.push({
+      specimenIndex: i + 1,
+      label: `Spécimen d'essai N° ${i + 1}`,
+      x: Number(left.toFixed(2)),
+      y: Number(top.toFixed(2)),
+      width: Number(safeChequeWidth.toFixed(2)),
+      height: Number(safeChequeHeight.toFixed(2))
+    });
+  }
+
+  return {
+    pageWidth,
+    pageHeight,
+    headerHeight,
+    specimens
+  };
+}
+
+/**
+ * Génère une feuille A4 vectorielle avec 3 spécimens de chèques aux dimensions réelles,
+ * avec l'image réelle de chèque choisie, règles millimétriques de haute précision et repères de découpe ✂️.
+ */
+export async function generateCalibrationSheetPdf(
+  template: BankTemplate,
+  includeBackground: boolean = true,
+  filename?: string
+): Promise<ExportPdfResult> {
+  const defaultFilename = filename || `Gabarit_Calibrage_3_Cheques_${sanitizeFilename(template.shortName || template.name)}.pdf`;
+
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4" // 210 x 297 mm
+  });
+
+  const layout = getCalibrationSpecimensLayout(template.width, template.height);
+
+  // Pré-chargement de l'image officielle du chèque
+  let bgDataUrl: string | null = null;
+  if (includeBackground && template.backgroundImage) {
+    try {
+      bgDataUrl = await loadImageDataUrl(template.backgroundImage);
+    } catch (e) {
+      console.warn("Erreur chargement image de fond chèque pour gabarit:", e);
+    }
+  }
+
+  // 1. En-tête de la page A4 avec consignes
+  doc.setFillColor(243, 244, 246);
+  doc.rect(10, 4, 190, 11, "F");
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.rect(10, 4, 190, 11, "S");
+
+  doc.setTextColor(17, 24, 39);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text(`VCHEQUE STUDIO - GABARIT D'IMPRESSION TEST : 3 SPÉCIMENS ${template.name.toUpperCase()}`, 105, 8, { align: "center" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(75, 85, 99);
+  doc.text(
+    "IMPORTANT : Imprimez à 100% (Taille réelle). Ne pas ajuster à la page. Découpez les 3 spécimens le long des pointillés ✂ pour vos tests.",
+    105,
+    12.5,
+    { align: "center" }
+  );
+
+  // 2. Dessin des 3 spécimens
+  layout.specimens.forEach((spec) => {
+    const { x, y, width: w, height: h, specimenIndex } = spec;
+
+    // A. Dessiner l'image officielle du chèque si disponible
+    if (bgDataUrl) {
+      try {
+        doc.addImage(bgDataUrl, "JPEG", x, y, w, h);
+      } catch {
+        doc.setFillColor(252, 252, 253);
+        doc.rect(x + 0.3, y + 0.3, w - 0.6, h - 0.6, "F");
+      }
+    } else {
+      doc.setFillColor(252, 252, 253);
+      doc.rect(x + 0.3, y + 0.3, w - 0.6, h - 0.6, "F");
+    }
+
+    // B. Ligne de découpe en pointillés extérieure
+    doc.setDrawColor(120, 120, 120);
+    doc.setLineDashPattern([2, 1.5], 0);
+    doc.setLineWidth(0.35);
+    doc.rect(x, y, w, h);
+    doc.setLineDashPattern([], 0); // Réinitialiser le style de trait plein
+
+    // C. Mention ciseaux sur le bord supérieur
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`[ ✂ Spécimen d'essai N° ${specimenIndex} — Découper le long des pointillés (${w} × ${h} mm) ]`, x + w / 2, y - 1, { align: "center" });
+
+    // D. Règle millimétrique horizontale (bord supérieur : 0 à w mm)
+    doc.setDrawColor(120, 120, 120);
+    doc.setLineWidth(0.25);
+    doc.line(x, y + 4.5, x + w, y + 4.5);
+
+    for (let mm = 0; mm <= Math.floor(w); mm += 1) {
+      const posX = x + mm;
+      let tickH = 1;
+      if (mm % 10 === 0) {
+        tickH = 3;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(4.5);
+        doc.setTextColor(60, 60, 60);
+        if (mm > 0 && mm < Math.floor(w)) {
+          doc.text(String(mm), posX, y + 4 - 0.5, { align: "center" });
+        }
+      } else if (mm % 5 === 0) {
+        tickH = 2;
+      }
+      doc.line(posX, y + 4.5, posX, y + 4.5 - tickH);
+    }
+
+    // E. Règle millimétrique verticale (bord gauche : 0 à h mm)
+    doc.line(x + 4.5, y, x + 4.5, y + h);
+    for (let mm = 0; mm <= Math.floor(h); mm += 1) {
+      const posY = y + mm;
+      let tickW = 1;
+      if (mm % 10 === 0) {
+        tickW = 3;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(4.5);
+        doc.setTextColor(60, 60, 60);
+        if (mm > 0 && mm < Math.floor(h)) {
+          doc.text(String(mm), x + 4 - 0.5, posY + 1.2, { align: "right" });
+        }
+      } else if (mm % 5 === 0) {
+        tickW = 2;
+      }
+      doc.line(x + 4.5, posY, x + 4.5 - tickW, posY);
+    }
+
+    // F. Badge du spécimen (en filigrane au centre si fond présent)
+    if (!bgDataUrl) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(30, 58, 138); // Bleu Virtanis
+      doc.text(
+        `SPÉCIMEN D'ESSAI N° ${specimenIndex} — ${template.name.toUpperCase()} (${w} × ${h} mm)`,
+        x + 12,
+        y + 9
+      );
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(5.5);
+      doc.setTextColor(107, 114, 128);
+      doc.text("Gabarit officiel d'alignement pour imprimante - Valeur juridique nulle", x + 12, y + 12.5);
+
+      // Tracé des zones indicatives uniquement si pas d'image de chèque réelle
+      const pos = template.positions;
+      doc.setDrawColor(210, 215, 225);
+      doc.setLineWidth(0.25);
+      doc.setFontSize(5);
+      doc.setTextColor(140, 145, 155);
+      doc.text("Zone Bénéficiaire (À l'ordre de) :", x + pos.beneficiary.x, y + pos.beneficiary.y - 1.5);
+      doc.line(x + pos.beneficiary.x, y + pos.beneficiary.y + 0.5, x + Math.min(w - 10, pos.beneficiary.x + 85), y + pos.beneficiary.y + 0.5);
+
+      doc.text("Zone Montant en lettres (L1) :", x + pos.words.x, y + pos.words.y - 1.5);
+      doc.line(x + pos.words.x, y + pos.words.y + 0.5, x + Math.min(w - 10, pos.words.x + 95), y + pos.words.y + 0.5);
+
+      doc.text("Zone Montant en lettres (L2) :", x + pos.wordsSecondLine.x, y + pos.wordsSecondLine.y - 1.5);
+      doc.line(x + pos.wordsSecondLine.x, y + pos.wordsSecondLine.y + 0.5, x + Math.min(w - 10, pos.wordsSecondLine.x + 95), y + pos.wordsSecondLine.y + 0.5);
+
+      doc.text("Montant chiffré :", x + pos.numeric.x - 22, y + pos.numeric.y - 4);
+      doc.rect(x + pos.numeric.x - 24, y + pos.numeric.y - 3, 26, 7);
+
+      doc.text("Fait à :", x + pos.place.x - 6, y + pos.place.y);
+      doc.line(x + pos.place.x, y + pos.place.y + 0.5, x + pos.place.x + 30, y + pos.place.y + 0.5);
+
+      doc.text("Le :", x + pos.date.x - 5, y + pos.date.y);
+      doc.line(x + pos.date.x, y + pos.date.y + 0.5, x + pos.date.x + 25, y + pos.date.y + 0.5);
+
+      doc.rect(x + w - 42, y + h - 18, 36, 14);
+      doc.setFontSize(5);
+      doc.text("Cadre Signature", x + w - 24, y + h - 11, { align: "center" });
+    }
+  });
+
+  // 3. Sauvegarde via Tauri dialog ou fallback navigateur web
+  if (isTauriEnvironment()) {
+    try {
+      const arrayBuffer = doc.output("arraybuffer");
+      const bytes = Array.from(new Uint8Array(arrayBuffer));
+
+      const savedPath = await invoke<string | null>("save_pdf_dialog", {
+        defaultFilename,
+        bytes
+      });
+
+      if (savedPath) {
+        return { success: true, filePath: savedPath, canceled: false };
+      } else {
+        return { success: false, canceled: true };
+      }
+    } catch (tauriErr) {
+      console.warn("Erreur sauvegarde gabarit PDF via Tauri:", tauriErr);
+    }
+  }
+
+  try {
+    const blob = doc.output("blob");
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = defaultFilename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+    return { success: true, canceled: false };
+  } catch (blobErr) {
+    doc.save(defaultFilename);
+    return { success: true, canceled: false };
+  }
+}

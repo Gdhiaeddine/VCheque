@@ -25,7 +25,11 @@ import {
   FileCheck2,
   ShieldCheck,
   Clock,
-  KeyRound
+  KeyRound,
+  Printer,
+  Trash2,
+  Plus,
+  Star
 } from "lucide-react";
 import type {
   AppSettings,
@@ -37,7 +41,8 @@ import type {
   NumericCurrencySuffix,
   DecimalSeparator,
   SecuritySettings,
-  UserRecord
+  UserRecord,
+  PrinterPreset
 } from "../types";
 import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
 import { exportFullBackup } from "../services/appSettings";
@@ -45,6 +50,12 @@ import { getConfigFilePath, openConfigFileFolder } from "../services/templatesCo
 import { getDataStoragePath, openFolder } from "../services/setupConfig";
 import { getSecuritySettings, saveSecuritySettings, logAuditEvent } from "../services/db";
 import { hasPermission, isUserAdmin } from "../services/permissions";
+import {
+  loadPrinterPresets,
+  setDefaultPrinterPreset,
+  deletePrinterPreset,
+  upsertPrinterPreset
+} from "../services/printerPresets";
 
 interface SettingsPageProps {
   settings: AppSettings;
@@ -58,7 +69,10 @@ interface SettingsPageProps {
   onOpenRestore?: () => void;
   onOpenAutoBackup?: () => void;
   onOpenInitialSetup?: () => void;
+  onOpenCalibrationWizard?: () => void;
   currentUser?: UserRecord | null;
+  presets?: PrinterPreset[];
+  onPresetsChange?: (presets: PrinterPreset[]) => void;
 }
 
 const COMMON_CITIES = ["Alger", "Oran", "Constantine", "Sétif", "Annaba", "Blida", "Batna", "Tlemcen"];
@@ -75,12 +89,70 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   onOpenRestore,
   onOpenAutoBackup,
   onOpenInitialSetup,
-  currentUser
+  onOpenCalibrationWizard,
+  currentUser,
+  presets: propPresets,
+  onPresetsChange
 }) => {
   const [configPath, setConfigPath] = useState<string>("");
   const [dataStoragePath, setDataStoragePath] = useState<string>("");
   const [saveToast, setSaveToast] = useState<boolean>(false);
   const [securitySettings, setSecuritySettings] = useState<SecuritySettings>(() => getSecuritySettings());
+
+  // Profils d'imprimante (Presets)
+  const [localPresets, setLocalPresets] = useState<PrinterPreset[]>(() => {
+    return propPresets && propPresets.length > 0 ? propPresets : loadPrinterPresets();
+  });
+  const [newPresetName, setNewPresetName] = useState<string>("");
+  const [showAddPresetForm, setShowAddPresetForm] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (propPresets && propPresets.length > 0) {
+      setLocalPresets(propPresets);
+    }
+  }, [propPresets]);
+
+  const handleSetDefaultPreset = (id: string) => {
+    const updated = setDefaultPrinterPreset(id, localPresets);
+    setLocalPresets(updated);
+    if (onPresetsChange) onPresetsChange(updated);
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2000);
+  };
+
+  const handleDeletePreset = (id: string) => {
+    const { presets: updated, success } = deletePrinterPreset(id, localPresets);
+    if (success) {
+      setLocalPresets(updated);
+      if (onPresetsChange) onPresetsChange(updated);
+      setSaveToast(true);
+      setTimeout(() => setSaveToast(false), 2000);
+    }
+  };
+
+  const handleAddPresetSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPresetName.trim()) return;
+    const { presets: updated } = upsertPrinterPreset(
+      {
+        name: newPresetName.trim(),
+        paperFormat: "a4-portrait",
+        placement: "center",
+        offsetX: 0,
+        offsetY: 0,
+        rotation: 0,
+        showBorderGuide: false,
+        isDefault: false
+      },
+      localPresets
+    );
+    setLocalPresets(updated);
+    if (onPresetsChange) onPresetsChange(updated);
+    setNewPresetName("");
+    setShowAddPresetForm(false);
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2000);
+  };
 
   const isAdmin = isUserAdmin(currentUser);
   const canViewAudit = hasPermission(currentUser, "audit:view");
@@ -731,6 +803,211 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section G : Profils d'Imprimantes & Calibrage d'Alignement */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <div className="section-title-group">
+              <Printer size={18} className="section-icon" />
+              <div>
+                <h2 className="section-title">Profils d'Imprimantes & Calibrage (Presets)</h2>
+                <span className="section-desc">
+                  Gestion multi-appareils (Laser, Jet d'encre, Bacs manuels) et alignement physique à l'aide de 3 chèques d'essai réels ✂️
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                className="btn-storage-action"
+                onClick={() => setShowAddPresetForm((prev) => !prev)}
+                title="Ajouter un nouveau profil d'imprimante"
+              >
+                <Plus size={14} />
+                <span>Nouveau profil</span>
+              </button>
+
+              {onOpenCalibrationWizard && (
+                <button
+                  type="button"
+                  className="btn-storage-action"
+                  onClick={onOpenCalibrationWizard}
+                  title="Lancer l'assistant de calibrage multi-spécimens"
+                >
+                  <Sparkles size={14} />
+                  <span>Assistant de calibrage</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="settings-card-body">
+            {/* Formulaire d'ajout rapide de profil */}
+            {showAddPresetForm && (
+              <div
+                style={{
+                  background: "#FAF8F5",
+                  border: "1.5px solid var(--gold-dark)",
+                  borderRadius: "8px",
+                  padding: "12px 16px",
+                  marginBottom: "14px"
+                }}
+              >
+                <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)", display: "block", marginBottom: "8px" }}>
+                  Ajouter un profil d'imprimante :
+                </span>
+                <form onSubmit={handleAddPresetSubmit} style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    className="user-form-input"
+                    placeholder="Nom du profil (ex: HP LaserJet Bureau, Canon Bac 1...)"
+                    style={{ flex: 1, minWidth: "240px", padding: "6px 10px", fontSize: "12px" }}
+                    value={newPresetName}
+                    onChange={(e) => setNewPresetName(e.target.value)}
+                    autoFocus
+                  />
+                  <button type="submit" className="btn-action-luxury-green" style={{ padding: "6px 14px", fontSize: "12px" }}>
+                    Enregistrer le profil
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-action-card"
+                    style={{ padding: "6px 10px", fontSize: "12px" }}
+                    onClick={() => {
+                      setShowAddPresetForm(false);
+                      setNewPresetName("");
+                    }}
+                  >
+                    Annuler
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* Liste des Profils d'Imprimante Configurés */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
+              {localPresets.map((preset) => (
+                <div
+                  key={preset.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 16px",
+                    background: preset.isDefault ? "rgba(172, 137, 70, 0.08)" : "#FFFFFF",
+                    border: preset.isDefault ? "1.5px solid var(--gold-dark)" : "1px solid var(--border-color)",
+                    borderRadius: "8px",
+                    flexWrap: "wrap",
+                    gap: "10px"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "6px",
+                        background: preset.isDefault ? "var(--gold-dark)" : "#EDE8DF",
+                        color: preset.isDefault ? "#FFFFFF" : "var(--text-primary)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}
+                    >
+                      <Printer size={16} />
+                    </div>
+
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>
+                          {preset.name}
+                        </strong>
+                        {preset.isDefault && (
+                          <span className="active-session-pill" style={{ display: "inline-flex", alignItems: "center", gap: "3px", fontSize: "10.5px", padding: "1px 6px" }}>
+                            <Star size={10} fill="currentColor" /> Par défaut
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: "var(--text-secondary)", marginTop: "3px", flexWrap: "wrap" }}>
+                        <span>Format: <strong>{preset.paperFormat}</strong></span>
+                        <span>•</span>
+                        <span>Emplacement: <strong>{preset.placement}</strong></span>
+                        <span>•</span>
+                        <span>Offset: <strong>X:{preset.offsetX > 0 ? `+${preset.offsetX}` : preset.offsetX}mm, Y:{preset.offsetY > 0 ? `+${preset.offsetY}` : preset.offsetY}mm</strong></span>
+                        <span>•</span>
+                        <span>Rotation: <strong>{preset.rotation}°</strong></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    {!preset.isDefault && (
+                      <button
+                        type="button"
+                        className="btn-action-card"
+                        style={{ padding: "4px 10px", fontSize: "11.5px" }}
+                        onClick={() => handleSetDefaultPreset(preset.id)}
+                        title="Définir ce profil comme l'imprimante principale"
+                      >
+                        <Star size={12} />
+                        <span>Définir par défaut</span>
+                      </button>
+                    )}
+
+                    {onOpenCalibrationWizard && (
+                      <button
+                        type="button"
+                        className="btn-action-card"
+                        style={{ padding: "4px 10px", fontSize: "11.5px", color: "var(--gold-dark)" }}
+                        onClick={onOpenCalibrationWizard}
+                        title="Lancer l'assistant de calibrage pour ce profil"
+                      >
+                        <Sliders size={12} />
+                        <span>Calibrer</span>
+                      </button>
+                    )}
+
+                    {localPresets.length > 1 && (
+                      <button
+                        type="button"
+                        className="btn-action-card"
+                        style={{ padding: "4px 8px", fontSize: "11.5px", color: "#DC2626" }}
+                        onClick={() => handleDeletePreset(preset.id)}
+                        title="Supprimer ce profil d'imprimante"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Raccourci vers l'Assistant de Calibrage avec Spécimens A4 */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">Feuille test A4 (3 exemplaires physiques à découper) :</strong>
+                <span className="storage-path">
+                  Générez une feuille de test calibrée ou testez le remplissage interactif pour ajuster le profil d'imprimante sans gâcher de vrais chèques.
+                </span>
+              </div>
+
+              {onOpenCalibrationWizard && (
+                <button
+                  type="button"
+                  className="btn-action-luxury-green"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "7px", padding: "8px 16px", fontSize: "12px", whiteSpace: "nowrap" }}
+                  onClick={onOpenCalibrationWizard}
+                >
+                  <Sliders size={14} />
+                  <span>Assistant de Calibrage</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -20,9 +20,13 @@ import {
   Minus,
   Eye,
   Maximize2,
-  FileDown
+  FileDown,
+  Sparkles,
+  Save,
+  Check
 } from "lucide-react";
-import type { BankTemplate, PrintSettings, PrintPlacement, PrintPaperFormat } from "../types";
+import type { BankTemplate, PrintSettings, PrintPlacement, PrintPaperFormat, PrinterPreset } from "../types";
+import { loadPrinterPresets, upsertPrinterPreset, presetToPrintSettings } from "../services/printerPresets";
 
 export interface PrintModalProps {
   isOpen: boolean;
@@ -42,6 +46,11 @@ export interface PrintModalProps {
   formattedNumeric?: string;
   isReprint?: boolean;
   printCount?: number;
+  onOpenCalibrationWizard?: () => void;
+  presets?: PrinterPreset[];
+  activePresetId?: string;
+  onSelectPreset?: (preset: PrinterPreset) => void;
+  onSavePreset?: (preset: Partial<PrinterPreset> & { name: string }) => void;
 }
 
 export function getPaperDimensions(
@@ -161,9 +170,88 @@ export const PrintModal: React.FC<PrintModalProps> = ({
   chequeNumber,
   formattedNumeric,
   isReprint = false,
-  printCount = 0
+  printCount = 0,
+  onOpenCalibrationWizard,
+  presets,
+  activePresetId,
+  onSelectPreset,
+  onSavePreset
 }) => {
   const [previewTab, setPreviewTab] = useState<"sheet" | "cheque">("sheet");
+
+  // Profils d'imprimante (Presets)
+  const [localPresets, setLocalPresets] = useState<PrinterPreset[]>(() => {
+    return presets && presets.length > 0 ? presets : loadPrinterPresets();
+  });
+  const [currentPresetId, setCurrentPresetId] = useState<string>(() => {
+    return (
+      activePresetId ||
+      localPresets.find((p) => p.isDefault)?.id ||
+      localPresets[0]?.id ||
+      "preset-standard-center"
+    );
+  });
+  const [showNewPresetModal, setShowNewPresetModal] = useState<boolean>(false);
+  const [newPresetNameInput, setNewPresetNameInput] = useState<string>("");
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const handleSelectPreset = (id: string) => {
+    setCurrentPresetId(id);
+    const p = localPresets.find((item) => item.id === id);
+    if (p) {
+      if (onSelectPreset) onSelectPreset(p);
+      onChangeSettings(presetToPrintSettings(p));
+    }
+  };
+
+  const handleSaveToActivePreset = () => {
+    const existing = localPresets.find((p) => p.id === currentPresetId);
+    if (!existing) return;
+    const { presets: updated, savedPreset } = upsertPrinterPreset(
+      {
+        id: existing.id,
+        name: existing.name,
+        paperFormat: settings.paperFormat,
+        placement: settings.placement,
+        offsetX: settings.offsetX,
+        offsetY: settings.offsetY,
+        rotation: settings.rotation,
+        showBorderGuide: settings.showBorderGuide,
+        isDefault: existing.isDefault
+      },
+      localPresets
+    );
+    setLocalPresets(updated);
+    if (onSavePreset) onSavePreset(savedPreset);
+    setToastMessage(`Profil "${savedPreset.name}" mis à jour !`);
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  const handleCreateNewPresetSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPresetNameInput.trim()) return;
+    const { presets: updated, savedPreset } = upsertPrinterPreset(
+      {
+        name: newPresetNameInput.trim(),
+        paperFormat: settings.paperFormat,
+        placement: settings.placement,
+        offsetX: settings.offsetX,
+        offsetY: settings.offsetY,
+        rotation: settings.rotation,
+        showBorderGuide: settings.showBorderGuide,
+        isDefault: false
+      },
+      localPresets
+    );
+    setLocalPresets(updated);
+    setCurrentPresetId(savedPreset.id);
+    if (onSavePreset) onSavePreset(savedPreset);
+    if (onSelectPreset) onSelectPreset(savedPreset);
+    setShowNewPresetModal(false);
+    setNewPresetNameInput("");
+    setToastMessage(`Profil "${savedPreset.name}" créé avec succès !`);
+    setTimeout(() => setToastMessage(null), 2500);
+  };
 
   if (!isOpen) return null;
 
@@ -243,6 +331,130 @@ export const PrintModal: React.FC<PrintModalProps> = ({
         <div className="print-modal-body">
           {/* Colonne gauche : Options de positionnement */}
           <div className="print-modal-controls">
+            {/* 0. Barre de sélection du Profil d'imprimante */}
+            <div
+              style={{
+                background: "#FAF8F5",
+                border: "1px solid var(--border-color)",
+                borderRadius: "8px",
+                padding: "8px 12px",
+                marginBottom: "14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "8px"
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1, minWidth: "200px" }}>
+                <Printer size={15} style={{ color: "var(--gold-dark)" }} />
+                <span style={{ fontSize: "11.5px", fontWeight: 700, color: "var(--text-primary)" }}>
+                  Profil :
+                </span>
+                <select
+                  className="user-form-input"
+                  style={{ flex: 1, padding: "4px 8px", fontSize: "12px", fontWeight: 600 }}
+                  value={currentPresetId}
+                  onChange={(e) => handleSelectPreset(e.target.value)}
+                >
+                  {localPresets.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.isDefault ? "★ (Défaut)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <button
+                  type="button"
+                  className="btn-action-card"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 8px", fontSize: "11px" }}
+                  onClick={handleSaveToActivePreset}
+                  title="Enregistrer les réglages actuels sur ce profil"
+                >
+                  <Save size={12} />
+                  <span>Enregistrer</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-action-card"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 8px", fontSize: "11px" }}
+                  onClick={() => setShowNewPresetModal((prev) => !prev)}
+                  title="Créer un nouveau profil à partir de ces réglages"
+                >
+                  <Plus size={12} />
+                  <span>Nouveau</span>
+                </button>
+              </div>
+            </div>
+
+            {toastMessage && (
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "#059669",
+                  background: "rgba(5, 150, 105, 0.1)",
+                  padding: "5px 10px",
+                  borderRadius: "5px",
+                  marginBottom: "12px",
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px"
+                }}
+              >
+                <Check size={13} strokeWidth={3} />
+                <span>{toastMessage}</span>
+              </div>
+            )}
+
+            {showNewPresetModal && (
+              <div
+                style={{
+                  background: "#FFFFFF",
+                  border: "1.5px solid var(--gold-dark)",
+                  borderRadius: "8px",
+                  padding: "10px 14px",
+                  marginBottom: "14px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.08)"
+                }}
+              >
+                <span style={{ fontSize: "11.5px", fontWeight: 700, color: "var(--text-primary)", display: "block", marginBottom: "6px" }}>
+                  Nom du nouveau profil d'imprimante :
+                </span>
+                <form onSubmit={handleCreateNewPresetSubmit} style={{ display: "flex", gap: "6px" }}>
+                  <input
+                    type="text"
+                    className="user-form-input"
+                    placeholder="ex: HP LaserJet Bac 1, Bureau..."
+                    style={{ flex: 1, padding: "4px 8px", fontSize: "12px" }}
+                    value={newPresetNameInput}
+                    onChange={(e) => setNewPresetNameInput(e.target.value)}
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    className="btn-action-luxury-green"
+                    style={{ padding: "4px 12px", fontSize: "11.5px" }}
+                  >
+                    Créer
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-action-card"
+                    style={{ padding: "4px 8px", fontSize: "11.5px" }}
+                    onClick={() => {
+                      setShowNewPresetModal(false);
+                      setNewPresetNameInput("");
+                    }}
+                  >
+                    Annuler
+                  </button>
+                </form>
+              </div>
+            )}
+
             {/* 1. Format du papier */}
             <div className="print-section-block">
               <label className="print-section-label">
@@ -452,6 +664,36 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                 />
                 <span>Imprimer un cadre repère en pointillés (test sur page blanche)</span>
               </label>
+
+              {/* Accès rapide à l'assistant de calibrage */}
+              {onOpenCalibrationWizard && (
+                <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px dashed var(--border-color)" }}>
+                  <button
+                    type="button"
+                    className="btn-action-card"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      width: "100%",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "var(--gold-dark)",
+                      backgroundColor: "rgba(172, 137, 70, 0.08)",
+                      border: "1px solid rgba(172, 137, 70, 0.25)",
+                      borderRadius: "6px",
+                      cursor: "pointer"
+                    }}
+                    onClick={onOpenCalibrationWizard}
+                    title="Lancer l'assistant de calibrage complet avec 3 spécimens réels A4"
+                  >
+                    <Sparkles size={14} />
+                    <span>Assistant de calibrage (3 spécimens réels)</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

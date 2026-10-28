@@ -10,6 +10,16 @@ export interface FieldPosition {
 
 export type Positions = Record<FieldKey, FieldPosition>;
 
+export interface CalibrationTestFillingData {
+  beneficiary: string;
+  wordsL1: string;
+  wordsL2: string;
+  numeric: string;
+  place: string;
+  date: string;
+  chequeNumber?: string;
+}
+
 export interface BankTemplate {
   id: string;
   name: string;
@@ -26,6 +36,7 @@ export interface BankTemplate {
   wordsMaxLineLength?: number; // max chars before wrap to line 2 (e.g. 55)
   wordsLine1MaxWidth?: number; // max width in mm for line 1
   wordsLine2MaxWidth?: number; // max width in mm for line 2
+  printSettings?: Partial<PrintSettings>; // Réglages d'impression spécifiques surchargés pour ce modèle
 }
 
 export interface ChequeData {
@@ -276,6 +287,22 @@ export interface PrintSettings {
   offsetY: number; // in mm
   rotation: 0 | 90 | 180 | 270;
   showBorderGuide: boolean;
+}
+
+export interface PrinterPreset {
+  id: string;
+  name: string; // Ex: "HP LaserJet Pro - Bac Manuel", "Epson EcoTank - Bac Arrière"
+  printerName?: string; // Nom de l'imprimante système (optionnel)
+  paperFormat: PrintPaperFormat;
+  placement: PrintPlacement;
+  offsetX: number; // in mm
+  offsetY: number; // in mm
+  rotation: 0 | 90 | 180 | 270;
+  showBorderGuide: boolean;
+  isDefault: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type LetterCase = "sentence" | "lower" | "upper";
