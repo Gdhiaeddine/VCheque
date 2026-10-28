@@ -1,6 +1,40 @@
 use std::fs;
 use tauri::Manager;
 
+pub mod license;
+
+#[tauri::command]
+fn get_hardware_id() -> Result<String, String> {
+    license::get_hardware_id()
+}
+
+#[tauri::command]
+fn check_license_status(app: tauri::AppHandle) -> Result<license::LicenseCheckResult, String> {
+    license::check_license_status(&app)
+}
+
+#[tauri::command]
+async fn activate_license_online(
+    app: tauri::AppHandle,
+    license_key: String,
+    server_url: Option<String>,
+) -> Result<license::LicenseCheckResult, String> {
+    license::activate_license_online(&app, &license_key, server_url.as_deref()).await
+}
+
+#[tauri::command]
+fn import_offline_license(
+    app: tauri::AppHandle,
+    license_content: String,
+) -> Result<license::LicenseCheckResult, String> {
+    license::import_offline_license(&app, &license_content)
+}
+
+#[tauri::command]
+fn deactivate_license(app: tauri::AppHandle) -> Result<(), String> {
+    license::deactivate_license(&app)
+}
+
 #[tauri::command]
 fn get_templates_config_path(app: tauri::AppHandle) -> Result<String, String> {
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
@@ -178,7 +212,12 @@ pub fn run() {
             save_pdf_to_downloads,
             pick_folder_dialog,
             get_app_data_dir,
-            open_folder_path
+            open_folder_path,
+            get_hardware_id,
+            check_license_status,
+            activate_license_online,
+            import_offline_license,
+            deactivate_license
         ])
         .run(tauri::generate_context!())
         .expect("erreur lors du lancement de Chèque Studio");

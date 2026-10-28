@@ -53,6 +53,9 @@ import { AuditTrailModal } from "./components/AuditTrailModal";
 import { BackupRestoreModal } from "./components/BackupRestoreModal";
 import { InitialSetupWizard } from "./components/InitialSetupWizard";
 import { PrinterCalibrationWizardModal } from "./components/PrinterCalibrationWizardModal";
+import { ActivationModal } from "./components/ActivationModal";
+import { checkLicenseStatus, type LicenseCheckResult } from "./services/licensing";
+
 import { getCalibrationSpecimensLayout } from "./services/pdfExport";
 import { isSetupCompleted } from "./services/setupConfig";
 import { hasPermission, getPermissionErrorMessage } from "./services/permissions";
@@ -191,6 +194,19 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+
+  // 2.5 Protection et Activation Commerciale VCheque
+  const [licenseStatus, setLicenseStatus] = useState<LicenseCheckResult | null>(null);
+  const [isActivationModalOpen, setIsActivationModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    checkLicenseStatus().then((res) => {
+      setLicenseStatus(res);
+      if (!res.is_valid) {
+        setIsActivationModalOpen(true);
+      }
+    });
   }, []);
 
   // 3. Print Dialog & Layout State
@@ -1605,6 +1621,8 @@ export default function App() {
             currentUser={currentUser}
             presets={printerPresets}
             onPresetsChange={handlePresetsChange}
+            licenseStatus={licenseStatus}
+            onOpenActivation={() => setIsActivationModalOpen(true)}
           />
         ) : (
           <>
@@ -2233,6 +2251,26 @@ export default function App() {
           refreshSecurity();
           setToast({
             message: "Données restaurées avec succès depuis l'archive certifiée !",
+            type: "success"
+          });
+        }}
+      />
+
+      {/* Protection Cryptographique & Licence Commerciale VCheque */}
+      <ActivationModal
+        isOpen={isActivationModalOpen || (licenseStatus !== null && !licenseStatus.is_valid)}
+        onClose={() => {
+          if (licenseStatus?.is_valid) {
+            setIsActivationModalOpen(false);
+          }
+        }}
+        allowClose={licenseStatus?.is_valid || false}
+        currentStatus={licenseStatus}
+        onActivated={(res) => {
+          setLicenseStatus(res);
+          setIsActivationModalOpen(false);
+          setToast({
+            message: `Licence activée avec succès ! Édition Commerciale Permanente (${res.payload?.licensee_name || ""})`,
             type: "success"
           });
         }}

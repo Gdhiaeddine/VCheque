@@ -73,6 +73,8 @@ interface SettingsPageProps {
   currentUser?: UserRecord | null;
   presets?: PrinterPreset[];
   onPresetsChange?: (presets: PrinterPreset[]) => void;
+  licenseStatus?: any;
+  onOpenActivation?: () => void;
 }
 
 const COMMON_CITIES = ["Alger", "Oran", "Constantine", "Sétif", "Annaba", "Blida", "Batna", "Tlemcen"];
@@ -92,7 +94,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   onOpenCalibrationWizard,
   currentUser,
   presets: propPresets,
-  onPresetsChange
+  onPresetsChange,
+  licenseStatus,
+  onOpenActivation
 }) => {
   const [configPath, setConfigPath] = useState<string>("");
   const [dataStoragePath, setDataStoragePath] = useState<string>("");
@@ -295,6 +299,69 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
       {/* 3. Grille des sections de réglages */}
       <div className="settings-sections-grid">
+        {/* Section 0 : Licence & Activation Commerciale */}
+        <div className="settings-card" style={{ borderColor: licenseStatus?.is_valid ? "#bbf7d0" : "#fed7aa" }}>
+          <div className="settings-card-header">
+            <div className="section-title-group">
+              <KeyRound size={18} className="section-icon" style={{ color: licenseStatus?.is_valid ? "#16a34a" : "#ea580c" }} />
+              <div>
+                <h2 className="section-title">Licence & Enregistrement VCheque</h2>
+                <span className="section-desc">
+                  {licenseStatus?.is_valid
+                    ? "Édition Commerciale Permanente activée et certifiée Ed25519"
+                    : "Application non activée ou vérification en cours"}
+                </span>
+              </div>
+            </div>
+            {onOpenActivation && (
+              <button
+                type="button"
+                className="btn-storage-action"
+                onClick={onOpenActivation}
+                title="Gérer la clé ou demander un transfert de poste"
+              >
+                <Sparkles size={14} />
+                <span>{licenseStatus?.is_valid ? "Gérer / Transférer" : "Activer la licence"}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="settings-card-body">
+            <div className="setting-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <strong style={{ display: "block", color: "#0f172a", fontSize: "0.95rem" }}>
+                  {licenseStatus?.payload?.licensee_name || "Licence Professionnelle"}
+                  {licenseStatus?.payload?.company && ` — ${licenseStatus.payload.company}`}
+                </strong>
+                <span style={{ fontSize: "0.8rem", color: "#64748b" }}>
+                  Clé : {licenseStatus?.payload?.license_key ? `${licenseStatus.payload.license_key.slice(0, 9)}****-****` : "Non activée"} &bull; Statut : {licenseStatus?.is_valid ? "Validée localement (Hors-ligne)" : "Non vérifiée"}
+                </span>
+              </div>
+              <span
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "9999px",
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                  backgroundColor: licenseStatus?.is_valid ? "#dcfce7" : "#ffedd5",
+                  color: licenseStatus?.is_valid ? "#15803d" : "#c2410c",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                {licenseStatus?.is_valid ? "✓ Commerciale Active" : "⚠️ Non activée"}
+              </span>
+            </div>
+
+            {licenseStatus?.machine_id && (
+              <div style={{ marginTop: "8px", fontSize: "0.75rem", color: "#64748b" }}>
+                Machine ID : <code style={{ backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>{licenseStatus.machine_id}</code>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Section A : Montant en lettres */}
         <div className="settings-card">
           <div className="settings-card-header">
