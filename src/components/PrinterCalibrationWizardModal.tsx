@@ -16,12 +16,14 @@ import {
   Layers,
   ChevronRight,
   RotateCw,
-  MousePointer
+  MousePointer,
+  Compass
 } from "lucide-react";
 import type { BankTemplate, FieldKey, Positions, PrintSettings, CalibrationTestFillingData, PrinterPreset } from "../types";
 import { generateCalibrationSheetPdf, getCalibrationSpecimensLayout } from "../services/pdfExport";
 import { loadPrinterPresets, upsertPrinterPreset } from "../services/printerPresets";
 import { PrintModal } from "./PrintModal";
+import { PrinterInsertionGuideModal } from "./PrinterInsertionGuideModal";
 
 export interface PrinterCalibrationModalProps {
   isOpen: boolean;
@@ -90,6 +92,7 @@ export const PrinterCalibrationWizardModal: React.FC<PrinterCalibrationModalProp
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [includeChequeImage, setIncludeChequeImage] = useState<boolean>(true);
   const [isPrintConfigModalOpen, setIsPrintConfigModalOpen] = useState<boolean>(false);
+  const [showInsertionGuide, setShowInsertionGuide] = useState<boolean>(true);
 
   // État des Profils d'imprimante (Presets)
   const [presetsList, setPresetsList] = useState<PrinterPreset[]>(() => {
@@ -390,6 +393,26 @@ export const PrinterCalibrationWizardModal: React.FC<PrinterCalibrationModalProp
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                type="button"
+                className="btn-action-card"
+                onClick={() => setShowInsertionGuide(true)}
+                title="Afficher le guide visuel des 4 bacs d'imprimante recommandés"
+                style={{
+                  padding: "5px 10px",
+                  fontSize: "11.5px",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  background: "rgba(197, 161, 90, 0.15)",
+                  borderColor: "var(--sidebar-gold, #C5A15A)",
+                  color: "var(--sidebar-gold-light, #E1C989)"
+                }}
+              >
+                <Compass size={14} />
+                <span>Guide des 4 Bacs (?)</span>
+              </button>
               <div className="setup-version-pill">
                 Étape {currentStep} / 3
               </div>
@@ -1337,6 +1360,26 @@ export const PrinterCalibrationWizardModal: React.FC<PrinterCalibrationModalProp
           onConfirmPrint={() => {
             setIsPrintConfigModalOpen(false);
             handleTriggerTestFilling();
+          }}
+        />
+      )}
+
+      {/* Guide visuel des 4 bacs d'insertion recommandés */}
+      {showInsertionGuide && (
+        <PrinterInsertionGuideModal
+          isOpen={showInsertionGuide}
+          onClose={() => setShowInsertionGuide(false)}
+          onSkipToCustom={() => setShowInsertionGuide(false)}
+          isWizardMode={true}
+          currentSettings={workingSettings}
+          onSelectPreset={(preset) => {
+            setWorkingSettings((prev) => ({
+              ...prev,
+              paperFormat: preset.paperFormat,
+              placement: preset.placement,
+              rotation: preset.rotation
+            }));
+            setShowInsertionGuide(false);
           }}
         />
       )}

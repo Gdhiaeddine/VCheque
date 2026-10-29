@@ -1,4 +1,4 @@
-import type { PrinterPreset, PrintSettings } from "../types";
+import type { PrinterPreset, PrintSettings, PrintPlacement, PrintPaperFormat } from "../types";
 
 export const PRINTER_PRESETS_KEY = "cheque-studio-printer-presets-v1";
 export const LEGACY_PRINT_SETTINGS_KEY = "cheque-studio-print-settings-v1";
@@ -227,4 +227,93 @@ export function deletePrinterPreset(id: string, currentList?: PrinterPreset[]): 
 
   savePrinterPresets(filtered);
   return { presets: filtered, success: true };
+}
+
+/**
+ * Interface pour les 4 préréglages visuels recommandés du Guide d'Insertion
+ */
+export interface InsertionGuidePreset {
+  id: string;
+  name: string;
+  shortName: string;
+  placement: PrintPlacement;
+  rotation: 0 | 90 | 180 | 270;
+  paperFormat: PrintPaperFormat;
+  iconType: "top-center-90" | "top-center-270" | "bottom-center-270" | "top-left-270";
+  feederType: string;
+  recommendedFor: string;
+  description: string;
+  badge?: string;
+}
+
+/**
+ * Les 4 préréglages d'insertion de chèques les plus utilisés sur le marché
+ */
+export const RECOMMENDED_INSERTION_PRESETS: InsertionGuidePreset[] = [
+  {
+    id: "preset-guide-top-center-90",
+    name: "Haut Centre 90°",
+    shortName: "Haut Centre 90°",
+    placement: "top-center",
+    rotation: 90,
+    paperFormat: "a4-portrait",
+    iconType: "top-center-90",
+    feederType: "Bac manuel supérieur (Centré)",
+    recommendedFor: "Laser HP LaserJet, Canon LBP/i-SENSYS, Xerox",
+    description: "Chèque inséré verticalement en haut au centre de la feuille A4. Guides de bac resserrés au milieu, rotation horaire 90°.",
+    badge: "Le plus populaire"
+  },
+  {
+    id: "preset-guide-top-center-270",
+    name: "Haut Centre 270°",
+    shortName: "Haut Centre 270°",
+    placement: "top-center",
+    rotation: 270,
+    paperFormat: "a4-portrait",
+    iconType: "top-center-270",
+    feederType: "Bac supérieur prioritaire",
+    recommendedFor: "Laser Brother, Kyocera, Lexmark",
+    description: "Chèque inséré verticalement en haut au centre avec rotation anti-horaire 270° (tête vers la gauche).",
+    badge: "Recommandé"
+  },
+  {
+    id: "preset-guide-bottom-center-270",
+    name: "Bas Centre 270°",
+    shortName: "Bas Centre 270°",
+    placement: "bottom-center",
+    rotation: 270,
+    paperFormat: "a4-portrait",
+    iconType: "bottom-center-270",
+    feederType: "Bac frontal / Chargement bas à plat",
+    recommendedFor: "Epson EcoTank L-series, HP DeskJet/SmartTank, Canon Pixma",
+    description: "Chèque alimenté par le bas au centre, orienté à 270°. Idéal pour les bacs de chargement à plat ou frontaux.",
+    badge: "Jet d'encre"
+  },
+  {
+    id: "preset-guide-top-left-270",
+    name: "Haut Gauche 270°",
+    shortName: "Haut Gauche 270°",
+    placement: "top-left",
+    rotation: 270,
+    paperFormat: "a4-portrait",
+    iconType: "top-left-270",
+    feederType: "Guide latéral fixe à gauche",
+    recommendedFor: "Imprimantes sans centrage automatique",
+    description: "Chèque plaqué contre le bord supérieur gauche fixe de la feuille A4, orienté à 270°.",
+    badge: "Guide fixe"
+  }
+];
+
+/**
+ * Convertit un préréglage du guide en réglages d'impression PrintSettings
+ */
+export function guidePresetToPrintSettings(preset: InsertionGuidePreset): PrintSettings {
+  return {
+    paperFormat: preset.paperFormat,
+    placement: preset.placement,
+    offsetX: 0,
+    offsetY: 0,
+    rotation: preset.rotation,
+    showBorderGuide: false
+  };
 }

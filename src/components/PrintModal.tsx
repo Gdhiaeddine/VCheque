@@ -23,10 +23,12 @@ import {
   FileDown,
   Sparkles,
   Save,
-  Check
+  Check,
+  Compass
 } from "lucide-react";
 import type { BankTemplate, PrintSettings, PrintPlacement, PrintPaperFormat, PrinterPreset } from "../types";
 import { loadPrinterPresets, upsertPrinterPreset, presetToPrintSettings } from "../services/printerPresets";
+import { PrinterInsertionGuideModal } from "./PrinterInsertionGuideModal";
 
 export interface PrintModalProps {
   isOpen: boolean;
@@ -194,6 +196,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
   const [showNewPresetModal, setShowNewPresetModal] = useState<boolean>(false);
   const [newPresetNameInput, setNewPresetNameInput] = useState<string>("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showInsertionGuide, setShowInsertionGuide] = useState<boolean>(false);
 
   const handleSelectPreset = (id: string) => {
     setCurrentPresetId(id);
@@ -312,9 +315,33 @@ export const PrintModal: React.FC<PrintModalProps> = ({
               <Printer size={20} className="modal-header-icon" />
             </div>
             <div>
-              <h2 className="modal-title">
-                {isReprint ? `Réimpression du Chèque (Copie N°${(printCount || 1) + 1})` : "Disposition & Positionnement d'Impression"}
-              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <h2 className="modal-title" style={{ margin: 0 }}>
+                  {isReprint ? `Réimpression du Chèque (Copie N°${(printCount || 1) + 1})` : "Disposition & Positionnement d'Impression"}
+                </h2>
+                <button
+                  type="button"
+                  className="btn-action-card"
+                  onClick={() => setShowInsertionGuide(true)}
+                  title="Consulter le guide des 4 bacs d'imprimante recommandés"
+                  style={{
+                    padding: "3px 9px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    background: "var(--gold-light, #FAF6ED)",
+                    borderColor: "var(--gold-primary, #AC8946)",
+                    color: "var(--gold-dark, #89672F)",
+                    borderRadius: "6px",
+                    cursor: "pointer"
+                  }}
+                >
+                  <Compass size={13} />
+                  <span>Guide ?</span>
+                </button>
+              </div>
               <p className="modal-subtitle">
                 {isReprint
                   ? "Ce chèque a déjà été imprimé. L'impression sera enregistrée comme réimpression sans doublon."
@@ -322,9 +349,32 @@ export const PrintModal: React.FC<PrintModalProps> = ({
               </p>
             </div>
           </div>
-          <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer">
-            <X size={18} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button
+              type="button"
+              className="btn-action-card"
+              onClick={() => setShowInsertionGuide(true)}
+              title="Consulter le guide visuel des 4 bacs d'imprimante (Guide d'insertion ?)"
+              style={{
+                padding: "6px 11px",
+                fontSize: "12px",
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                background: "rgba(197, 161, 90, 0.15)",
+                borderColor: "var(--gold-primary, #AC8946)",
+                color: "var(--gold-dark, #89672F)",
+                borderRadius: "6px"
+              }}
+            >
+              <Compass size={14} />
+              <span>Guide d'insertion (?)</span>
+            </button>
+            <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Corps : 2 colonnes */}
@@ -665,9 +715,34 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                 <span>Imprimer un cadre repère en pointillés (test sur page blanche)</span>
               </label>
 
-              {/* Accès rapide à l'assistant de calibrage */}
-              {onOpenCalibrationWizard && (
-                <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px dashed var(--border-color)" }}>
+              {/* Accès rapide au guide d'insertion et à l'assistant de calibrage */}
+              <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px dashed var(--border-color)", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="btn-action-card"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    width: "100%",
+                    padding: "7px 12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "var(--sidebar-emerald, #17483A)",
+                    backgroundColor: "rgba(23, 72, 58, 0.08)",
+                    border: "1px solid rgba(23, 72, 58, 0.25)",
+                    borderRadius: "6px",
+                    cursor: "pointer"
+                  }}
+                  onClick={() => setShowInsertionGuide(true)}
+                  title="Consulter les 4 configurations d'insertion de chèque (Haut Centre 90°, etc.)"
+                >
+                  <Compass size={14} />
+                  <span>Guide des 4 Bacs d'Impression (?)</span>
+                </button>
+
+                {onOpenCalibrationWizard && (
                   <button
                     type="button"
                     className="btn-action-card"
@@ -677,7 +752,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                       justifyContent: "center",
                       gap: "6px",
                       width: "100%",
-                      padding: "8px 12px",
+                      padding: "7px 12px",
                       fontSize: "12px",
                       fontWeight: 600,
                       color: "var(--gold-dark)",
@@ -692,8 +767,8 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                     <Sparkles size={14} />
                     <span>Assistant de calibrage (3 spécimens réels)</span>
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
@@ -948,6 +1023,25 @@ export const PrintModal: React.FC<PrintModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Guide visuel des 4 bacs d'insertion */}
+      {showInsertionGuide && (
+        <PrinterInsertionGuideModal
+          isOpen={showInsertionGuide}
+          onClose={() => setShowInsertionGuide(false)}
+          currentSettings={settings}
+          onSelectPreset={(preset) => {
+            handleUpdate({
+              paperFormat: preset.paperFormat,
+              placement: preset.placement,
+              rotation: preset.rotation
+            });
+            setShowInsertionGuide(false);
+            setToastMessage(`Position "${preset.name}" appliquée !`);
+            setTimeout(() => setToastMessage(null), 2500);
+          }}
+        />
+      )}
     </div>
   );
 };
