@@ -23,7 +23,11 @@ struct ActivationData {
     signature: String,
 }
 
+#[cfg(debug_assertions)]
 const DEFAULT_SERVER_URL: &str = "http://localhost:8000/api/v1/license/activate";
+
+#[cfg(not(debug_assertions))]
+const DEFAULT_SERVER_URL: &str = "https://virtanis.net/api/v1/license/activate";
 
 pub async fn perform_online_activation(
     license_key: &str,
