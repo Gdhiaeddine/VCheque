@@ -8,7 +8,8 @@ import {
   setActiveUser,
   getSecuritySettings,
   saveSecuritySettings,
-  logAuditEvent
+  logAuditEvent,
+  getDatabase
 } from "./db";
 import { generateSalt, hashPin } from "./security";
 import { loadAppSettings, saveAppSettings } from "./appSettings";
@@ -207,6 +208,23 @@ export async function applyInitialSetup(data: InitialSetupData): Promise<{
     isActive: true,
     createdAt: new Date().toISOString()
   };
+
+  // 4.1 Purger le compte fictif par défaut 'user-admin-default' (Direction / Administrateur)
+  try {
+    const rawUsers = localStorage.getItem("cheque_app_users");
+    if (rawUsers) {
+      const parsed = JSON.parse(rawUsers);
+      const filtered = parsed.filter((u: any) => u.id !== "user-admin-default");
+      localStorage.setItem("cheque_app_users", JSON.stringify(filtered));
+    }
+  } catch {}
+
+  const dbInstance = await getDatabase();
+  if (dbInstance) {
+    try {
+      await dbInstance.execute(`DELETE FROM users WHERE id = 'user-admin-default';`);
+    } catch {}
+  }
 
   await saveUser(adminUser);
   setActiveUser(adminUser);

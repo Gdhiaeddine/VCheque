@@ -29,7 +29,12 @@ import {
   Printer,
   Trash2,
   Plus,
-  Star
+  Star,
+  Award,
+  Copy,
+  Eye,
+  EyeOff,
+  Calendar
 } from "lucide-react";
 import type {
   AppSettings,
@@ -50,6 +55,7 @@ import { getConfigFilePath, openConfigFileFolder } from "../services/templatesCo
 import { getDataStoragePath, openFolder } from "../services/setupConfig";
 import { getSecuritySettings, saveSecuritySettings, logAuditEvent } from "../services/db";
 import { hasPermission, isUserAdmin } from "../services/permissions";
+import { getHardwareId } from "../services/licensing";
 import {
   loadPrinterPresets,
   setDefaultPrinterPreset,
@@ -109,6 +115,66 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   });
   const [newPresetName, setNewPresetName] = useState<string>("");
   const [showAddPresetForm, setShowAddPresetForm] = useState<boolean>(false);
+
+  // Gestion de l'affichage de la licence & empreinte machine
+  const [showFullKey, setShowFullKey] = useState<boolean>(false);
+  const [copiedKey, setCopiedKey] = useState<boolean>(false);
+  const [copiedHwid, setCopiedHwid] = useState<boolean>(false);
+  const [localHwid, setLocalHwid] = useState<string>(licenseStatus?.machine_id || "");
+
+  useEffect(() => {
+    if (licenseStatus?.machine_id) {
+      setLocalHwid(licenseStatus.machine_id);
+    } else {
+      getHardwareId().then((id) => {
+        if (id) setLocalHwid(id);
+      });
+    }
+  }, [licenseStatus?.machine_id]);
+
+  const handleCopyLicenseKey = () => {
+    const key = licenseStatus?.payload?.license_key;
+    if (key) {
+      navigator.clipboard.writeText(key);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
+    }
+  };
+
+  const handleCopyHwid = () => {
+    const hwid = localHwid || licenseStatus?.machine_id;
+    if (hwid) {
+      navigator.clipboard.writeText(hwid);
+      setCopiedHwid(true);
+      setTimeout(() => setCopiedHwid(false), 2000);
+    }
+  };
+
+  const isLicenseValid = Boolean(licenseStatus?.is_valid);
+  const rawLicenseKey = licenseStatus?.payload?.license_key || "";
+  const hasLicenseKey = Boolean(rawLicenseKey);
+
+  const displayedLicenseKey = React.useMemo(() => {
+    if (!rawLicenseKey) return "";
+    if (showFullKey) return rawLicenseKey;
+    if (rawLicenseKey.length > 12) {
+      return `${rawLicenseKey.slice(0, 9)}••••-••••-••••`;
+    }
+    return "••••-••••-••••";
+  }, [rawLicenseKey, showFullKey]);
+
+  const effectiveHardwareId = localHwid || licenseStatus?.machine_id || "";
+
+  const licenseIssuedDateStr = React.useMemo(() => {
+    const ts = licenseStatus?.payload?.issued_at;
+    if (!ts) return null;
+    try {
+      const d = new Date(ts > 1e11 ? ts : ts * 1000);
+      return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    } catch {
+      return null;
+    }
+  }, [licenseStatus?.payload?.issued_at]);
 
   useEffect(() => {
     if (propPresets && propPresets.length > 0) {
@@ -299,66 +365,213 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
       {/* 3. Grille des sections de réglages */}
       <div className="settings-sections-grid">
-        {/* Section 0 : Licence & Activation Commerciale */}
-        <div className="settings-card" style={{ borderColor: licenseStatus?.is_valid ? "#bbf7d0" : "#fed7aa" }}>
+        {/* Section 0 : Licence & Enregistrement Officiel */}
+        <div className="settings-card settings-card-full">
           <div className="settings-card-header">
             <div className="section-title-group">
-              <KeyRound size={18} className="section-icon" style={{ color: licenseStatus?.is_valid ? "#16a34a" : "#ea580c" }} />
+              <Award size={18} className="section-icon" />
               <div>
-                <h2 className="section-title">Licence & Enregistrement VCheque</h2>
+                <h2 className="section-title">Licence & Enregistrement du Logiciel</h2>
                 <span className="section-desc">
-                  {licenseStatus?.is_valid
-                    ? "Édition Commerciale Permanente activée et certifiée Ed25519"
-                    : "Application non activée ou vérification en cours"}
+                  Authentification de la copie, certificat cryptographique Ed25519 et assignation de poste
                 </span>
               </div>
             </div>
+
             {onOpenActivation && (
-              <button
-                type="button"
-                className="btn-storage-action"
-                onClick={onOpenActivation}
-                title="Gérer la clé ou demander un transfert de poste"
-              >
-                <Sparkles size={14} />
-                <span>{licenseStatus?.is_valid ? "Gérer / Transférer" : "Activer la licence"}</span>
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  type="button"
+                  className={isLicenseValid ? "btn-storage-action" : "btn-action-luxury-green"}
+                  onClick={onOpenActivation}
+                  title={
+                    isLicenseValid
+                      ? "Gérer la clé d'activation ou demander un transfert de poste"
+                      : "Activer votre licence commerciale permanente"
+                  }
+                  style={!isLicenseValid ? { padding: "6px 14px", fontSize: "11.5px" } : undefined}
+                >
+                  <Sparkles size={14} />
+                  <span>{isLicenseValid ? "Gérer / Transférer" : "Activer la licence"}</span>
+                </button>
+              </div>
             )}
           </div>
 
           <div className="settings-card-body">
-            <div className="setting-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <strong style={{ display: "block", color: "#0f172a", fontSize: "0.95rem" }}>
-                  {licenseStatus?.payload?.licensee_name || "Licence Professionnelle"}
-                  {licenseStatus?.payload?.company && ` — ${licenseStatus.payload.company}`}
-                </strong>
-                <span style={{ fontSize: "0.8rem", color: "#64748b" }}>
-                  Clé : {licenseStatus?.payload?.license_key ? `${licenseStatus.payload.license_key.slice(0, 9)}****-****` : "Non activée"} &bull; Statut : {licenseStatus?.is_valid ? "Validée localement (Hors-ligne)" : "Non vérifiée"}
+            {/* Bannière de prestige du certificat */}
+            <div className={`license-hero-banner ${isLicenseValid ? "is-valid" : "is-pending"}`}>
+              <div className="license-hero-identity">
+                <div className={`license-hero-icon-box ${isLicenseValid ? "valid" : "pending"}`}>
+                  {isLicenseValid ? <ShieldCheck size={22} /> : <KeyRound size={22} />}
+                </div>
+
+                <div className="license-hero-meta">
+                  <div className="license-hero-title-row">
+                    <span className="license-hero-name">
+                      {licenseStatus?.payload?.licensee_name ||
+                        (isLicenseValid ? "Licence Commerciale Permanente" : "Copie d'Évaluation VCheque")}
+                    </span>
+                    {licenseStatus?.payload?.company && (
+                      <span className="license-hero-company">
+                        — {licenseStatus.payload.company}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="license-hero-tags">
+                    <span className="license-pill-tag">
+                      <Award size={11} />
+                      <span>
+                        {isLicenseValid
+                          ? (licenseStatus?.payload?.edition || "Édition Commerciale Mono-poste")
+                          : "Mode Démonstration"}
+                      </span>
+                    </span>
+                    <span className="license-pill-tag">
+                      <Lock size={11} />
+                      <span>Signature Ed25519 certifiée</span>
+                    </span>
+                    {licenseIssuedDateStr && (
+                      <span className="license-pill-tag">
+                        <Calendar size={11} />
+                        <span>Délivrée le {licenseIssuedDateStr}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="license-hero-status-side">
+                <span className={`license-status-badge ${isLicenseValid ? "valid" : "pending"}`}>
+                  {isLicenseValid ? (
+                    <>
+                      <CheckCircle2 size={14} />
+                      <span>Licence Commerciale Active</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldAlert size={14} />
+                      <span>Copie Non Activée</span>
+                    </>
+                  )}
                 </span>
               </div>
-              <span
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: "9999px",
-                  fontSize: "0.75rem",
-                  fontWeight: 700,
-                  backgroundColor: licenseStatus?.is_valid ? "#dcfce7" : "#ffedd5",
-                  color: licenseStatus?.is_valid ? "#15803d" : "#c2410c",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
+            </div>
+
+            {/* Ligne 1 : Clé de licence commerciale */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">Clé de Licence Commerciale (License Key) :</strong>
+                <span className="storage-path" title={hasLicenseKey ? displayedLicenseKey : undefined}>
+                  {hasLicenseKey ? (
+                    <code className="license-code-chip">{displayedLicenseKey}</code>
+                  ) : (
+                    "Aucune clé de licence enregistrée sur ce poste (Passez par l'assistant)"
+                  )}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                {hasLicenseKey && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-storage-action"
+                      onClick={() => setShowFullKey((prev) => !prev)}
+                      title={showFullKey ? "Masquer la clé" : "Afficher la clé complète"}
+                    >
+                      {showFullKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                      <span>{showFullKey ? "Masquer" : "Afficher"}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn-storage-action"
+                      onClick={handleCopyLicenseKey}
+                      title="Copier la clé dans le presse-papier"
+                    >
+                      {copiedKey ? <Check size={13} style={{ color: "var(--green-positive)" }} /> : <Copy size={13} />}
+                      <span>{copiedKey ? "Copiée !" : "Copier"}</span>
+                    </button>
+                  </>
+                )}
+
+                {!hasLicenseKey && onOpenActivation && (
+                  <button
+                    type="button"
+                    className="btn-storage-action"
+                    onClick={onOpenActivation}
+                    title="Saisir votre clé de licence commerciale"
+                  >
+                    <KeyRound size={13} />
+                    <span>Saisir la clé</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Ligne 2 : Identifiant matériel (Machine ID) */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">Identifiant Matériel du Poste (Hardware Machine ID) :</strong>
+                <span className="storage-path" title={effectiveHardwareId}>
+                  <code className="license-code-chip">{effectiveHardwareId || "Génération de l'empreinte..."}</code>
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className="btn-storage-action"
+                onClick={handleCopyHwid}
+                disabled={!effectiveHardwareId}
+                title="Copier l'identifiant machine (requis pour l'activation hors-ligne)"
               >
-                {licenseStatus?.is_valid ? "✓ Commerciale Active" : "⚠️ Non activée"}
+                {copiedHwid ? <Check size={13} style={{ color: "var(--green-positive)" }} /> : <Copy size={13} />}
+                <span>{copiedHwid ? "Copié !" : "Copier l'identifiant"}</span>
+              </button>
+            </div>
+
+            {/* Ligne 3 : Mode de fonctionnement & Validation hors-ligne */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">Mode d'Exécution & Contrôle d'Intégrité :</strong>
+                <span className="storage-path">
+                  Contrôle 100% autonome local — Aucune connexion Internet obligatoire au quotidien pour émettre vos chèques
+                </span>
+              </div>
+
+              <span
+                className="active-session-pill"
+                style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", padding: "3px 8px" }}
+                title="Validation locale permanente par cryptographie Ed25519"
+              >
+                <ShieldCheck size={12} />
+                <span>Autonome & Sécurisé</span>
               </span>
             </div>
 
-            {licenseStatus?.machine_id && (
-              <div style={{ marginTop: "8px", fontSize: "0.75rem", color: "#64748b" }}>
-                Machine ID : <code style={{ backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>{licenseStatus.machine_id}</code>
+            {/* Ligne 4 : Transfert de poste & Réassignation */}
+            <div className="storage-info-row">
+              <div className="storage-info-item">
+                <strong className="storage-title">Renouvellement de Matériel & Transfert de Poste :</strong>
+                <span className="storage-path">
+                  Possibilité de réassigner votre licence sur un nouveau PC en cas de remplacement ou réinstallation Windows
+                </span>
               </div>
-            )}
+
+              {onOpenActivation && (
+                <button
+                  type="button"
+                  className="btn-storage-action"
+                  onClick={onOpenActivation}
+                  title="Lancer l'assistant pour gérer ou transférer votre licence"
+                >
+                  <Sparkles size={13} />
+                  <span>Assistant d'activation</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

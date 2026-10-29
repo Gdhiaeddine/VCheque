@@ -54,6 +54,7 @@ import { BackupRestoreModal } from "./components/BackupRestoreModal";
 import { InitialSetupWizard } from "./components/InitialSetupWizard";
 import { PrinterCalibrationWizardModal } from "./components/PrinterCalibrationWizardModal";
 import { ActivationModal } from "./components/ActivationModal";
+import { WelcomeModal } from "./components/WelcomeModal";
 import { checkLicenseStatus, type LicenseCheckResult } from "./services/licensing";
 
 import { getCalibrationSpecimensLayout } from "./services/pdfExport";
@@ -199,12 +200,20 @@ export default function App() {
   // 2.5 Protection et Activation Commerciale VCheque
   const [licenseStatus, setLicenseStatus] = useState<LicenseCheckResult | null>(null);
   const [isActivationModalOpen, setIsActivationModalOpen] = useState<boolean>(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(false);
 
   useEffect(() => {
     checkLicenseStatus().then((res) => {
       setLicenseStatus(res);
       if (!res.is_valid) {
         setIsActivationModalOpen(true);
+        setIsInitialSetupOpen(false);
+        setShowWelcomeModal(false);
+      } else {
+        setIsActivationModalOpen(false);
+        if (!isSetupCompleted()) {
+          setIsInitialSetupOpen(true);
+        }
       }
     });
   }, []);
@@ -263,6 +272,7 @@ export default function App() {
   // Assistant de Calibrage & Gabarit 3 Spécimens
   const [isCalibrationWizardOpen, setIsCalibrationWizardOpen] = useState<boolean>(false);
   const [isPrintingCalibrationSheet, setIsPrintingCalibrationSheet] = useState<boolean>(false);
+  const [calibrationTemplate, setCalibrationTemplate] = useState<BankTemplate | null>(null);
   const [calibrationIncludeBackground, setCalibrationIncludeBackground] = useState<boolean>(true);
   const [calibrationTestFilling, setCalibrationTestFilling] = useState<{
     template: BankTemplate;
@@ -361,7 +371,7 @@ export default function App() {
   const [showAuditTrailModal, setShowAuditTrailModal] = useState<boolean>(false);
   const [showBackupRestoreModal, setShowBackupRestoreModal] = useState<boolean>(false);
   const [backupModalInitialTab, setBackupModalInitialTab] = useState<"export" | "restore" | "auto">("export");
-  const [isInitialSetupOpen, setIsInitialSetupOpen] = useState<boolean>(() => !isSetupCompleted());
+  const [isInitialSetupOpen, setIsInitialSetupOpen] = useState<boolean>(false);
 
   // Synchronisation des paramètres de sécurité lors de changements
   const refreshSecurity = useCallback(() => {
@@ -1059,7 +1069,8 @@ export default function App() {
   };
 
   // Calibrage : Lancer l'impression de la feuille physique A4 avec 3 spécimens
-  const handlePrintCalibrationSheet = (includeImage: boolean = true) => {
+  const handlePrintCalibrationSheet = (template: BankTemplate, includeImage: boolean = true) => {
+    setCalibrationTemplate(template);
     setCalibrationIncludeBackground(includeImage);
     setIsPrintingCalibrationSheet(true);
     setTimeout(() => {
@@ -1067,7 +1078,7 @@ export default function App() {
       setTimeout(() => {
         setIsPrintingCalibrationSheet(false);
       }, 500);
-    }, 250);
+    }, 350);
   };
 
   // Calibrage : Lancer l'impression du texte de test sur le spécimen découpé
@@ -2269,6 +2280,7 @@ export default function App() {
         onActivated={(res) => {
           setLicenseStatus(res);
           setIsActivationModalOpen(false);
+          setShowWelcomeModal(true);
           setToast({
             message: `Licence activée avec succès ! Édition Commerciale Permanente (${res.payload?.licensee_name || ""})`,
             type: "success"
@@ -2276,8 +2288,21 @@ export default function App() {
         }}
       />
 
+      {/* Écran de Bienvenue après Activation */}
+      <WelcomeModal
+        isOpen={showWelcomeModal}
+        licenseStatus={licenseStatus}
+        isAlreadyConfigured={isSetupCompleted()}
+        onProceed={() => {
+          setShowWelcomeModal(false);
+          if (!isSetupCompleted()) {
+            setIsInitialSetupOpen(true);
+          }
+        }}
+      />
+
       {/* Assistant d'Initialisation & Premier Démarrage */}
-      {isInitialSetupOpen && !showSplash && (
+      {isInitialSetupOpen && !showSplash && !isActivationModalOpen && !showWelcomeModal && (
         <InitialSetupWizard
           onComplete={handleInitialSetupComplete}
           onCancel={isSetupCompleted() ? () => setIsInitialSetupOpen(false) : undefined}
@@ -2327,7 +2352,9 @@ export default function App() {
 
       {/* Feuille de Calibrage Physique (3 spécimens découpables A4) */}
       {isPrintingCalibrationSheet && (() => {
-        const layout = getCalibrationSpecimensLayout(currentTemplate.width, currentTemplate.height);
+        const tpl = calibrationTemplate || currentTemplate;
+        const layout = getCalibrationSpecimensLayout(tpl.width, tpl.height);
+        const hasBg = Boolean(calibrationIncludeBackground && tpl.backgroundImage);
         return (
           <div className="print-calibration-sheet" style={{ width: "210mm", height: "297mm", position: "relative" }}>
             <div
@@ -2346,185 +2373,289 @@ export default function App() {
               }}
             >
               <div style={{ fontSize: "8.5pt", fontWeight: "bold", color: "#111" }}>
-                VCHEQUE STUDIO — GABARIT DE CALIBRAGE PHYSIQUE & 3 SPÉCIMENS RÉELS (A4 - 100%)
+                VCHEQUE STUDIO — GABARIT D'IMPRESSION TEST : 3 SPÉCIMENS {tpl.name.toUpperCase()} (A4 - 100%)
               </div>
-              <div style={{ fontSize: "6pt", color: "#555", marginTop: "0.5mm" }}>
-                Ne pas ajuster à la page. Découpez les 3 spécimens le long des pointillés ✂ pour vos essais d'alignement.
+              <div style={{ fontSize: "6.5pt", color: "#555", marginTop: "0.5mm" }}>
+                IMPORTANT : Imprimez à 100% (Taille réelle). Ne pas ajuster à la page. Découpez les 3 spécimens le long des pointillés ✂ pour vos tests.
               </div>
             </div>
 
             {layout.specimens.map((spec) => (
-              <div
-                key={spec.specimenIndex}
-                className="pcs-specimen-card"
-                style={{
-                  position: "absolute",
-                  left: `${spec.x}mm`,
-                  top: `${spec.y}mm`,
-                  width: `${spec.width}mm`,
-                  height: `${spec.height}mm`,
-                  border: "1.5px dashed #444",
-                  boxSizing: "border-box",
-                  backgroundColor: "#fff",
-                  backgroundImage: (calibrationIncludeBackground && currentTemplate.backgroundImage)
-                    ? `url(${currentTemplate.backgroundImage})`
-                    : undefined,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                  backgroundRepeat: "no-repeat",
-                  overflow: "hidden"
-                }}
-              >
-                {/* Règle horizontale */}
-                <div style={{ position: "absolute", left: 0, top: 0, width: "100%", height: "4.5mm", borderBottom: "0.5px solid #bbb" }}>
-                  {Array.from({ length: Math.floor(spec.width) + 1 }).map((_, mm) => {
-                    const is10 = mm % 10 === 0;
-                    const is5 = mm % 5 === 0;
-                    return (
+              <React.Fragment key={spec.specimenIndex}>
+                {/* Mention ciseaux au-dessus du spécimen */}
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${spec.x}mm`,
+                    top: `${spec.y - 3.8}mm`,
+                    width: `${spec.width}mm`,
+                    textAlign: "center",
+                    fontSize: "5.5pt",
+                    fontWeight: "bold",
+                    color: "#555",
+                    letterSpacing: "0.2px"
+                  }}
+                >
+                  [ ✂ Spécimen d'essai N° {spec.specimenIndex} — Découper le long des pointillés ({spec.width} × {spec.height} mm) ]
+                </div>
+
+                <div
+                  className="pcs-specimen-card"
+                  style={{
+                    position: "absolute",
+                    left: `${spec.x}mm`,
+                    top: `${spec.y}mm`,
+                    width: `${spec.width}mm`,
+                    height: `${spec.height}mm`,
+                    border: "1.5px dashed #444",
+                    boxSizing: "border-box",
+                    backgroundColor: "#ffffff",
+                    overflow: "hidden"
+                  }}
+                >
+                  {/* Image officielle du chèque */}
+                  {hasBg && (
+                    <img
+                      src={tpl.backgroundImage}
+                      alt={tpl.name}
+                      className="pcs-specimen-bg-image"
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "fill",
+                        display: "block",
+                        zIndex: 1,
+                        pointerEvents: "none"
+                      }}
+                    />
+                  )}
+
+                  {/* Règle horizontale */}
+                  <div
+                    className="pcs-ruler-h"
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      width: "100%",
+                      height: "4.5mm",
+                      borderBottom: "0.5px solid rgba(80, 80, 80, 0.7)",
+                      background: hasBg ? "rgba(255, 255, 255, 0.6)" : "transparent",
+                      zIndex: 3
+                    }}
+                  >
+                    {Array.from({ length: Math.floor(spec.width) + 1 }).map((_, mm) => {
+                      const is10 = mm % 10 === 0;
+                      const is5 = mm % 5 === 0;
+                      return (
+                        <div
+                          key={mm}
+                          style={{
+                            position: "absolute",
+                            left: `${mm}mm`,
+                            bottom: 0,
+                            width: "0.5px",
+                            height: is10 ? "3.5mm" : is5 ? "2mm" : "1mm",
+                            backgroundColor: "#444"
+                          }}
+                        >
+                          {is10 && mm > 0 && mm < Math.floor(spec.width) && (
+                            <span
+                              style={{
+                                position: "absolute",
+                                left: "-2mm",
+                                top: "-3.5mm",
+                                fontSize: "4.5pt",
+                                fontWeight: "bold",
+                                color: "#222"
+                              }}
+                            >
+                              {mm}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Règle verticale */}
+                  <div
+                    className="pcs-ruler-v"
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      width: "4.5mm",
+                      height: "100%",
+                      borderRight: "0.5px solid rgba(80, 80, 80, 0.7)",
+                      background: hasBg ? "rgba(255, 255, 255, 0.6)" : "transparent",
+                      zIndex: 3
+                    }}
+                  >
+                    {Array.from({ length: Math.floor(spec.height) + 1 }).map((_, mm) => {
+                      const is10 = mm % 10 === 0;
+                      const is5 = mm % 5 === 0;
+                      return (
+                        <div
+                          key={mm}
+                          style={{
+                            position: "absolute",
+                            top: `${mm}mm`,
+                            right: 0,
+                            height: "0.5px",
+                            width: is10 ? "3.5mm" : is5 ? "2mm" : "1mm",
+                            backgroundColor: "#444"
+                          }}
+                        >
+                          {is10 && mm > 0 && mm < Math.floor(spec.height) && (
+                            <span
+                              style={{
+                                position: "absolute",
+                                right: "4mm",
+                                top: "-1.5mm",
+                                fontSize: "4.5pt",
+                                fontWeight: "bold",
+                                color: "#222"
+                              }}
+                            >
+                              {mm}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Si pas d'image officielle : afficher les repères vectoriels indicatifs comme dans le PDF */}
+                  {!hasBg && (
+                    <>
+                      {/* En-tête du spécimen */}
                       <div
-                        key={mm}
                         style={{
                           position: "absolute",
-                          left: `${mm}mm`,
-                          bottom: 0,
-                          width: "0.5px",
-                          height: is10 ? "3.5mm" : is5 ? "2mm" : "1mm",
-                          backgroundColor: "#666"
+                          left: "12mm",
+                          top: "7mm",
+                          fontSize: "7.5pt",
+                          fontWeight: "bold",
+                          color: "#1e3a8a",
+                          zIndex: 2
                         }}
                       >
-                        {is10 && mm > 0 && mm < Math.floor(spec.width) && (
-                          <span style={{ position: "absolute", left: "-2mm", top: "-3.5mm", fontSize: "4.5pt", color: "#666" }}>
-                            {mm}
-                          </span>
-                        )}
+                        SPÉCIMEN D'ESSAI N° {spec.specimenIndex} — {tpl.name.toUpperCase()} ({spec.width} × {spec.height} mm)
                       </div>
-                    );
-                  })}
-                </div>
-
-                {/* Règle verticale */}
-                <div style={{ position: "absolute", left: 0, top: 0, width: "4.5mm", height: "100%", borderRight: "0.5px solid #bbb" }}>
-                  {Array.from({ length: Math.floor(spec.height) + 1 }).map((_, mm) => {
-                    const is10 = mm % 10 === 0;
-                    const is5 = mm % 5 === 0;
-                    return (
                       <div
-                        key={mm}
                         style={{
                           position: "absolute",
-                          top: `${mm}mm`,
-                          right: 0,
-                          height: "0.5px",
-                          width: is10 ? "3.5mm" : is5 ? "2mm" : "1mm",
-                          backgroundColor: "#666"
+                          left: "12mm",
+                          top: "10.5mm",
+                          fontSize: "5.5pt",
+                          color: "#777",
+                          zIndex: 2
                         }}
                       >
-                        {is10 && mm > 0 && mm < Math.floor(spec.height) && (
-                          <span style={{ position: "absolute", right: "4mm", top: "-1.5mm", fontSize: "4.5pt", color: "#666" }}>
-                            {mm}
-                          </span>
-                        )}
+                        Gabarit officiel d'alignement pour imprimante - Valeur juridique nulle
                       </div>
-                    );
-                  })}
-                </div>
 
-                {/* En-tête du spécimen */}
-                <div style={{ position: "absolute", left: "12mm", top: "7mm", fontSize: "7pt", fontWeight: "bold", color: "#1e3a8a" }}>
-                  SPÉCIMEN D'ESSAI N° {spec.specimenIndex} — {currentTemplate.name.toUpperCase()} ({spec.width} × {spec.height} mm)
-                </div>
-                <div style={{ position: "absolute", left: "12mm", top: "10.5mm", fontSize: "5pt", color: "#777" }}>
-                  [ ✂ Découper soigneusement le long des pointillés extérieurs pour obtenir votre chèque d'essai ]
-                </div>
+                      {/* Tracé des zones standard du chèque */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: `${tpl.positions.beneficiary.x}mm`,
+                          top: `${tpl.positions.beneficiary.y}mm`,
+                          fontSize: "5pt",
+                          color: "#888",
+                          zIndex: 2
+                        }}
+                      >
+                        Zone Bénéficiaire (À l'ordre de)
+                        <div style={{ width: "85mm", borderBottom: "0.5px solid #ccc", marginTop: "1mm" }} />
+                      </div>
 
-                {/* Tracé des zones standard du chèque */}
-                <div
-                  style={{
-                    position: "absolute",
-                    left: `${currentTemplate.positions.beneficiary.x}mm`,
-                    top: `${currentTemplate.positions.beneficiary.y}mm`,
-                    fontSize: "5pt",
-                    color: "#999"
-                  }}
-                >
-                  Zone Bénéficiaire (À l'ordre de)
-                  <div style={{ width: "85mm", borderBottom: "0.5px solid #ccc", marginTop: "1mm" }} />
-                </div>
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: `${tpl.positions.words.x}mm`,
+                          top: `${tpl.positions.words.y}mm`,
+                          fontSize: "5pt",
+                          color: "#888",
+                          zIndex: 2
+                        }}
+                      >
+                        Montant en lettres (L1)
+                        <div style={{ width: "95mm", borderBottom: "0.5px solid #ccc", marginTop: "1mm" }} />
+                      </div>
 
-                <div
-                  style={{
-                    position: "absolute",
-                    left: `${currentTemplate.positions.words.x}mm`,
-                    top: `${currentTemplate.positions.words.y}mm`,
-                    fontSize: "5pt",
-                    color: "#999"
-                  }}
-                >
-                  Montant en lettres (L1)
-                  <div style={{ width: "95mm", borderBottom: "0.5px solid #ccc", marginTop: "1mm" }} />
-                </div>
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: `${tpl.positions.wordsSecondLine.x}mm`,
+                          top: `${tpl.positions.wordsSecondLine.y}mm`,
+                          fontSize: "5pt",
+                          color: "#888",
+                          zIndex: 2
+                        }}
+                      >
+                        Montant en lettres (L2)
+                        <div style={{ width: "95mm", borderBottom: "0.5px solid #ccc", marginTop: "1mm" }} />
+                      </div>
 
-                <div
-                  style={{
-                    position: "absolute",
-                    left: `${currentTemplate.positions.wordsSecondLine.x}mm`,
-                    top: `${currentTemplate.positions.wordsSecondLine.y}mm`,
-                    fontSize: "5pt",
-                    color: "#999"
-                  }}
-                >
-                  Montant en lettres (L2)
-                  <div style={{ width: "95mm", borderBottom: "0.5px solid #ccc", marginTop: "1mm" }} />
-                </div>
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: `${tpl.positions.numeric.x - 25}mm`,
+                          top: `${tpl.positions.numeric.y - 4}mm`,
+                          width: "27mm",
+                          height: "8mm",
+                          border: "0.5px solid #bbb",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "5pt",
+                          color: "#888",
+                          zIndex: 2
+                        }}
+                      >
+                        # Montant Chiffré #
+                      </div>
 
-                <div
-                  style={{
-                    position: "absolute",
-                    left: `${currentTemplate.positions.numeric.x - 25}mm`,
-                    top: `${currentTemplate.positions.numeric.y - 4}mm`,
-                    width: "27mm",
-                    height: "8mm",
-                    border: "0.5px solid #bbb",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "5pt",
-                    color: "#999"
-                  }}
-                >
-                  # Montant Chiffré #
-                </div>
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: `${tpl.positions.place.x}mm`,
+                          top: `${tpl.positions.place.y}mm`,
+                          fontSize: "5pt",
+                          color: "#888",
+                          zIndex: 2
+                        }}
+                      >
+                        Fait à : _________ Le : _________
+                      </div>
 
-                <div
-                  style={{
-                    position: "absolute",
-                    left: `${currentTemplate.positions.place.x}mm`,
-                    top: `${currentTemplate.positions.place.y}mm`,
-                    fontSize: "5pt",
-                    color: "#999"
-                  }}
-                >
-                  Fait à : _________ Le : _________
+                      <div
+                        style={{
+                          position: "absolute",
+                          right: "10mm",
+                          bottom: "6mm",
+                          width: "36mm",
+                          height: "14mm",
+                          border: "0.5px solid #bbb",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "5pt",
+                          color: "#888",
+                          zIndex: 2
+                        }}
+                      >
+                        Cadre Signature
+                      </div>
+                    </>
+                  )}
                 </div>
-
-                <div
-                  style={{
-                    position: "absolute",
-                    right: "10mm",
-                    bottom: "6mm",
-                    width: "36mm",
-                    height: "14mm",
-                    border: "0.5px solid #bbb",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "5pt",
-                    color: "#999"
-                  }}
-                >
-                  Cadre Signature
-                </div>
-              </div>
+              </React.Fragment>
             ))}
           </div>
         );

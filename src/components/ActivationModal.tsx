@@ -1,5 +1,23 @@
 import React, { useState, useEffect } from "react";
 import {
+  ShieldCheck,
+  KeyRound,
+  Sparkles,
+  Copy,
+  Check,
+  X,
+  Globe,
+  FileCheck2,
+  UploadCloud,
+  Laptop,
+  AlertTriangle,
+  Lock,
+  RefreshCw,
+  Award,
+  CheckCircle2,
+  FileText
+} from "lucide-react";
+import {
   getHardwareId,
   activateLicenseOnline,
   importOfflineLicense,
@@ -28,6 +46,9 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [offlineMode, setOfflineMode] = useState<boolean>(false);
   const [offlineFileContent, setOfflineFileContent] = useState<string>("");
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+
+  const isValid = Boolean(currentStatus?.is_valid);
 
   useEffect(() => {
     if (isOpen) {
@@ -52,7 +73,7 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
 
   const handleKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
-    // Insertion automatique des tirets si utilisateur saisit en continu
+    // Insertion automatique des tirets si l'utilisateur saisit en continu
     const raw = val.replace(/-/g, "");
     if (raw.startsWith("VCHQ")) {
       const rest = raw.slice(4);
@@ -92,6 +113,7 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setSelectedFileName(file.name);
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
@@ -102,7 +124,7 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
 
   const handleOfflineActivate = async () => {
     if (!offlineFileContent.trim()) {
-      setErrorMsg("Veuillez sélectionner ou coller le contenu du fichier .lic signé.");
+      setErrorMsg("Veuillez sélectionner un fichier .lic ou coller son contenu scellé.");
       return;
     }
 
@@ -115,7 +137,7 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
         onActivated(result);
         if (onClose) onClose();
       } else {
-        setErrorMsg(result.message || "Fichier de licence invalide.");
+        setErrorMsg(result.message || "Fichier de licence invalide ou non certifié.");
       }
     } catch (err: any) {
       setErrorMsg(err?.message || String(err) || "Échec de l'importation de la licence hors-ligne.");
@@ -125,293 +147,269 @@ export const ActivationModal: React.FC<ActivationModalProps> = ({
   };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: "rgba(15, 23, 42, 0.85)",
-        backdropFilter: "blur(6px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 99999,
-        padding: "1.5rem",
-        fontFamily: "Inter, system-ui, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: "#ffffff",
-          borderRadius: "16px",
-          boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.35)",
-          width: "100%",
-          maxWidth: "580px",
-          padding: "2rem",
-          color: "#1e293b",
-          border: "1px solid #e2e8f0",
-        }}
-      >
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-            <div
-              style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "12px",
-                backgroundColor: "#0284c7",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#ffffff",
-                fontSize: "24px",
-                boxShadow: "0 4px 6px -1px rgba(2, 132, 199, 0.3)",
-              }}
-            >
-              🔒
+    <div className="activation-modal-overlay" role="dialog" aria-modal="true">
+      <div className="activation-modal-card">
+        {/* En-tête prestige du modal */}
+        <div className="activation-modal-header">
+          <div className="activation-modal-title-row">
+            <div className={`activation-modal-icon-badge ${isValid ? "" : "pending"}`}>
+              {isValid ? <ShieldCheck size={22} /> : <KeyRound size={22} />}
             </div>
             <div>
-              <h2 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 700, color: "#0f172a" }}>
-                Activation VCheque
+              <h2 className="activation-modal-title">
+                <span>Activation Commerciale VCheque</span>
+                {isValid && (
+                  <span
+                    className="active-session-pill"
+                    style={{ fontSize: "11px", padding: "2px 8px" }}
+                  >
+                    <Check size={11} /> Actif
+                  </span>
+                )}
               </h2>
-              <p style={{ margin: "4px 0 0", fontSize: "0.875rem", color: "#64748b" }}>
-                Édition Commerciale Permanente &bull; Licence 1 PC
+              <p className="activation-modal-subtitle">
+                Édition Commerciale Permanente &bull; Licence Monoposte Certifiée Ed25519
               </p>
             </div>
           </div>
+
           {allowClose && onClose && (
             <button
+              type="button"
+              className="company-modal-close"
               onClick={onClose}
-              style={{
-                background: "none",
-                border: "none",
-                fontSize: "1.25rem",
-                cursor: "pointer",
-                color: "#94a3b8",
-                padding: "4px 8px",
-              }}
+              title="Fermer cette fenêtre"
             >
-              ✕
+              <X size={18} />
             </button>
           )}
         </div>
 
-        {/* Alerte Erreur */}
-        {errorMsg && (
-          <div
-            style={{
-              padding: "0.85rem 1rem",
-              borderRadius: "10px",
-              backgroundColor: "#fef2f2",
-              border: "1px solid #fecaca",
-              color: "#991b1b",
-              fontSize: "0.875rem",
-              marginBottom: "1.25rem",
-              lineHeight: 1.4,
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "8px",
-            }}
-          >
-            <span style={{ fontSize: "1.1rem" }}>⚠️</span>
-            <span>{errorMsg}</span>
-          </div>
-        )}
-
-        {/* Empreinte Machine ID */}
-        <div
-          style={{
-            backgroundColor: "#f8fafc",
-            borderRadius: "10px",
-            padding: "0.85rem 1rem",
-            marginBottom: "1.25rem",
-            border: "1px solid #e2e8f0",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>
-              Identifiant Matériel de ce PC (Machine ID)
-            </span>
-            <button
-              type="button"
-              onClick={handleCopyHardwareId}
-              style={{
-                background: "none",
-                border: "1px solid #cbd5e1",
-                borderRadius: "6px",
-                padding: "2px 8px",
-                fontSize: "0.75rem",
-                color: copied ? "#16a34a" : "#0284c7",
-                cursor: "pointer",
-                fontWeight: 600,
-                backgroundColor: "#ffffff",
-              }}
-            >
-              {copied ? "✓ Copié !" : "📋 Copier"}
-            </button>
-          </div>
-          <code
-            style={{
-              display: "block",
-              fontSize: "0.75rem",
-              color: "#334155",
-              wordBreak: "break-all",
-              backgroundColor: "#f1f5f9",
-              padding: "6px 8px",
-              borderRadius: "6px",
-            }}
-          >
-            {hardwareId || "Calcul en cours..."}
-          </code>
-        </div>
-
-        {/* Formulaire Activation En Ligne */}
-        {!offlineMode ? (
-          <form onSubmit={handleOnlineActivate}>
-            <div style={{ marginBottom: "1.25rem" }}>
-              <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                Clé de licence commerciale
-              </label>
-              <input
-                type="text"
-                placeholder="VCHQ-XXXX-XXXX-XXXX-XXXX"
-                value={licenseKey}
-                onChange={handleKeyChange}
-                maxLength={24}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "0.75rem 1rem",
-                  fontSize: "1.05rem",
-                  fontFamily: "monospace",
-                  fontWeight: 600,
-                  letterSpacing: "1px",
-                  borderRadius: "10px",
-                  border: "2px solid #cbd5e1",
-                  outline: "none",
-                  textAlign: "center",
-                  textTransform: "uppercase",
-                }}
-                disabled={loading}
-              />
-              <span style={{ display: "block", fontSize: "0.75rem", color: "#64748b", marginTop: "4px" }}>
-                Une connexion Internet est requise uniquement lors de cette première activation.
+        {/* Corps du modal */}
+        <div className="activation-modal-body">
+          {/* Bannière d'état si déjà activé */}
+          {isValid && currentStatus?.payload && (
+            <div className="activation-status-banner">
+              <div className="activation-status-meta">
+                <span className="activation-status-title">
+                  Poste déjà activé : {currentStatus.payload.licensee_name || "Licence Professionnelle"}
+                  {currentStatus.payload.company ? ` (${currentStatus.payload.company})` : ""}
+                </span>
+                <span className="activation-status-desc">
+                  Clé active : <code className="license-code-chip">{currentStatus.payload.license_key}</code>
+                </span>
+              </div>
+              <span className="license-status-badge valid">
+                <CheckCircle2 size={13} />
+                <span>Certifiée</span>
               </span>
             </div>
+          )}
 
-            <button
-              type="submit"
-              disabled={loading || !licenseKey.trim()}
-              style={{
-                width: "100%",
-                padding: "0.85rem",
-                borderRadius: "10px",
-                border: "none",
-                backgroundColor: loading ? "#94a3b8" : "#0284c7",
-                color: "#ffffff",
-                fontWeight: 700,
-                fontSize: "0.95rem",
-                cursor: loading ? "not-allowed" : "pointer",
-                boxShadow: "0 4px 6px -1px rgba(2, 132, 199, 0.3)",
-                transition: "background-color 0.15s ease",
-              }}
-            >
-              {loading ? "Activation en cours..." : "Activer la licence par Internet"}
-            </button>
+          {/* Alerte Erreur avec design du système */}
+          {errorMsg && (
+            <div className="activation-error-alert">
+              <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: "1px" }} />
+              <div>
+                <strong>Erreur d'activation :</strong>
+                <div style={{ marginTop: "2px" }}>{errorMsg}</div>
+              </div>
+            </div>
+          )}
 
-            <div style={{ textAlign: "center", marginTop: "1rem" }}>
+          {/* Empreinte Matérielle (Hardware ID) */}
+          <div className="activation-hwid-box">
+            <div className="activation-hwid-header">
+              <span className="activation-hwid-label">
+                <Laptop size={14} className="section-icon" />
+                <span>Identifiant Matériel Unique (Machine ID)</span>
+              </span>
               <button
                 type="button"
-                onClick={() => setOfflineMode(true)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#64748b",
-                  fontSize: "0.8rem",
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                }}
+                className="btn-storage-action"
+                onClick={handleCopyHardwareId}
+                title="Copier l'identifiant pour transmission hors-ligne"
+                style={{ padding: "3px 8px", fontSize: "11px" }}
               >
-                PC sans connexion Internet ? Activer hors-ligne via fichier .lic
+                {copied ? <Check size={12} style={{ color: "var(--green-positive)" }} /> : <Copy size={12} />}
+                <span>{copied ? "Copié !" : "Copier"}</span>
               </button>
             </div>
-          </form>
-        ) : (
-          /* Mode Hors-Ligne (Importation de fichier signé) */
-          <div>
-            <div style={{ marginBottom: "1.25rem" }}>
-              <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                Importer le fichier de licence signé (.lic)
-              </label>
-              <input
-                type="file"
-                accept=".lic,.json"
-                onChange={handleOfflineFileSelect}
-                style={{ display: "block", width: "100%", fontSize: "0.85rem", marginBottom: "8px" }}
-              />
-              <textarea
-                rows={4}
-                placeholder="Ou collez ici le contenu du fichier de licence reçu de l'administrateur..."
-                value={offlineFileContent}
-                onChange={(e) => setOfflineFileContent(e.target.value)}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  fontFamily: "monospace",
-                  fontSize: "0.75rem",
-                  padding: "8px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5e1",
-                }}
-              />
+
+            <div className="activation-hwid-code-row">
+              <code className="activation-hwid-code">
+                {hardwareId || "Calcul de l'empreinte physique..."}
+              </code>
             </div>
 
-            <div style={{ display: "flex", gap: "10px" }}>
+            <span className="setting-hint" style={{ fontSize: "10.5px" }}>
+              Cette empreinte physique est scellée à votre matériel lors de la signature cryptographique.
+            </span>
+          </div>
+
+          {/* Sélecteur de mode (Segmented Control standard) */}
+          <div className="setting-row">
+            <div className="segmented-control">
               <button
                 type="button"
-                onClick={() => setOfflineMode(false)}
-                style={{
-                  flex: 1,
-                  padding: "0.75rem",
-                  borderRadius: "10px",
-                  border: "1px solid #cbd5e1",
-                  backgroundColor: "#ffffff",
-                  color: "#475569",
-                  fontWeight: 600,
-                  cursor: "pointer",
+                className={`segment-btn ${!offlineMode ? "active" : ""}`}
+                onClick={() => {
+                  setOfflineMode(false);
+                  setErrorMsg(null);
                 }}
               >
-                ← Retour au mode Internet
+                <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  <Globe size={13} />
+                  <span>Activation en Ligne (Recommandé)</span>
+                </div>
               </button>
               <button
                 type="button"
-                onClick={handleOfflineActivate}
-                disabled={loading || !offlineFileContent.trim()}
-                style={{
-                  flex: 1,
-                  padding: "0.75rem",
-                  borderRadius: "10px",
-                  border: "none",
-                  backgroundColor: loading ? "#94a3b8" : "#16a34a",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  cursor: loading ? "not-allowed" : "pointer",
+                className={`segment-btn ${offlineMode ? "active" : ""}`}
+                onClick={() => {
+                  setOfflineMode(true);
+                  setErrorMsg(null);
                 }}
               >
-                {loading ? "Vérification..." : "Valider la licence hors-ligne"}
+                <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  <FileCheck2 size={13} />
+                  <span>Activation Hors-Ligne (.lic)</span>
+                </div>
               </button>
             </div>
           </div>
-        )}
 
-        {/* Footer info */}
-        <div style={{ marginTop: "1.5rem", borderTop: "1px solid #f1f5f9", paddingTop: "0.85rem", textAlign: "center" }}>
-          <p style={{ margin: 0, fontSize: "0.75rem", color: "#94a3b8" }}>
-            Protection cryptographique Ed25519 &bull; Fonctionnement hors-ligne permanent après activation.
-          </p>
+          {/* Mode 1 : Activation en ligne */}
+          {!offlineMode ? (
+            <form onSubmit={handleOnlineActivate} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div className="setting-row">
+                <label className="setting-label">
+                  Saisissez votre clé de licence commerciale :
+                </label>
+                <input
+                  type="text"
+                  className="activation-key-input"
+                  placeholder="VCHQ-XXXX-XXXX-XXXX-XXXX"
+                  value={licenseKey}
+                  onChange={handleKeyChange}
+                  maxLength={24}
+                  disabled={loading}
+                  autoFocus
+                />
+                <small className="setting-hint">
+                  Format standard : <code>VCHQ-XXXX-XXXX-XXXX-XXXX</code>. Une connexion Internet n'est requise que pour cette validation unique.
+                </small>
+              </div>
+
+              <button
+                type="submit"
+                className="btn-action-luxury-green"
+                disabled={loading || !licenseKey.trim()}
+                style={{ width: "100%", padding: "11px", fontSize: "13px" }}
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw size={15} className="spin" />
+                    <span>Vérification & activation auprès du serveur...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={15} />
+                    <span>Valider & Activer la licence par Internet</span>
+                  </>
+                )}
+              </button>
+            </form>
+          ) : (
+            /* Mode 2 : Activation hors ligne */
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div className="setting-row">
+                <label className="setting-label">
+                  Fichier de certificat de licence (.lic signé) :
+                </label>
+
+                <label className="activation-offline-dropzone">
+                  <input
+                    type="file"
+                    accept=".lic,.json"
+                    onChange={handleOfflineFileSelect}
+                    style={{ display: "none" }}
+                    disabled={loading}
+                  />
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+                    <UploadCloud size={24} className="section-icon" />
+                    <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>
+                      {selectedFileName ? selectedFileName : "Cliquez pour importer votre fichier de licence (.lic)"}
+                    </span>
+                    <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                      {selectedFileName ? "Fichier prêt à être validé" : "Fourni par votre administrateur ou revendeur agréé"}
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="setting-row">
+                <label className="setting-label">
+                  Ou collez directement le contenu du certificat :
+                </label>
+                <textarea
+                  className="activation-textarea"
+                  rows={3}
+                  placeholder="Collez ici le contenu cryptographique scellé du fichier .lic..."
+                  value={offlineFileContent}
+                  onChange={(e) => setOfflineFileContent(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  type="button"
+                  className="btn-action-card"
+                  onClick={() => {
+                    setOfflineMode(false);
+                    setErrorMsg(null);
+                  }}
+                  disabled={loading}
+                  style={{ flex: 1 }}
+                >
+                  <Globe size={13} />
+                  <span>Mode Internet</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-action-luxury-green"
+                  onClick={handleOfflineActivate}
+                  disabled={loading || !offlineFileContent.trim()}
+                  style={{ flex: 2 }}
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw size={14} className="spin" />
+                      <span>Vérification Ed25519...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck size={14} />
+                      <span>Valider la licence hors-ligne</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Pied de page du modal */}
+        <div className="activation-modal-footer">
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <Lock size={13} className="section-icon" />
+            <span>Signature cryptographique Ed25519 (256 bits)</span>
+          </div>
+          <span style={{ fontWeight: 600 }}>
+            Utilisation 100% autonome hors-ligne
+          </span>
         </div>
       </div>
     </div>

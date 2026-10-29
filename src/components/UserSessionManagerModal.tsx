@@ -217,12 +217,18 @@ export const UserSessionManagerModal: React.FC<UserSessionManagerModalProps> = (
     const target = users.find((u) => u.id === id);
     if (!target) return;
 
-    if (isUserAdmin(target)) {
-      alert("Action refusée : Impossible de supprimer un compte possédant le rôle Administrateur.");
+    if (target.id === currentUser?.id) {
+      alert("Action refusée : Impossible de supprimer le compte actuellement actif.");
       return;
     }
 
-    if (window.confirm(`Confirmez-vous la suppression du compte opérateur "${target.displayName}" ?`)) {
+    const adminCount = users.filter((u) => isUserAdmin(u)).length;
+    if (isUserAdmin(target) && adminCount <= 1) {
+      alert("Action refusée : Impossible de supprimer le dernier compte possédant le rôle Administrateur.");
+      return;
+    }
+
+    if (window.confirm(`Confirmez-vous la suppression du compte "${target.displayName}" ?`)) {
       const ok = await deleteUser(id);
       if (ok) {
         await logAuditEvent("user_delete", "user", `Suppression de l'utilisateur : ${target.displayName}`);
@@ -383,13 +389,13 @@ export const UserSessionManagerModal: React.FC<UserSessionManagerModalProps> = (
                           <Edit2 size={13} />
                         </button>
 
-                        {/* Suppression : réservé à l'administrateur et strictement interdit pour tout compte administrateur */}
-                        {isAdmin && !isUserAdmin(u) && (
+                        {/* Suppression : réservé à l'administrateur, interdit sur le compte actif ou le dernier admin restant */}
+                        {isAdmin && u.id !== currentUser?.id && (!isUserAdmin(u) || users.filter((usr) => isUserAdmin(usr)).length > 1) && (
                           <button
                             type="button"
                             className="btn-user-icon-action delete-danger"
                             onClick={() => handleDeleteUser(u.id)}
-                            title="Supprimer cet opérateur"
+                            title="Supprimer ce compte"
                           >
                             <Trash2 size={13} />
                           </button>

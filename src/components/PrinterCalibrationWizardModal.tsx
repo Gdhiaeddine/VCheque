@@ -33,7 +33,7 @@ export interface PrinterCalibrationModalProps {
   globalPrintSettings: PrintSettings;
   onChangeGlobalPrintSettings: (settings: PrintSettings) => void;
   onApplyPositionsToAll?: (positions: Positions) => void;
-  onPrintCalibrationSheet: (includeImage?: boolean) => void;
+  onPrintCalibrationSheet: (template: BankTemplate, includeImage?: boolean) => void;
   onPrintTestFilling: (
     template: BankTemplate,
     settings: PrintSettings,
@@ -589,7 +589,11 @@ export const PrinterCalibrationWizardModal: React.FC<PrinterCalibrationModalProp
                       <button
                         type="button"
                         className="btn-action-luxury-green btn-print-main"
-                        onClick={() => onPrintCalibrationSheet(includeChequeImage)}
+                        onClick={() => {
+                          if (activeTemplate) {
+                            onPrintCalibrationSheet(activeTemplate, includeChequeImage);
+                          }
+                        }}
                         style={{ display: "inline-flex", alignItems: "center", gap: "8px", padding: "10px 20px", fontSize: "12.5px" }}
                       >
                         <Printer size={16} />

@@ -3552,6 +3552,25 @@ export async function getUsers(): Promise<UserRecord[]> {
     return u;
   });
 
+  // Si un administrateur réel configuré existe déjà, purger le compte fictif par défaut 'user-admin-default'
+  const hasConfiguredAdmin = list.some(
+    (u) => u.id !== "user-admin-default" && (u.role === "admin" || u.roles?.includes("admin"))
+  );
+  if (hasConfiguredAdmin) {
+    const cleaned = list.filter((u) => u.id !== "user-admin-default");
+    if (cleaned.length !== list.length) {
+      list = cleaned;
+      try {
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(list));
+      } catch {}
+      if (db) {
+        try {
+          await db.execute(`DELETE FROM users WHERE id = 'user-admin-default';`);
+        } catch {}
+      }
+    }
+  }
+
   if (list.length === 0) {
     list = [DEFAULT_ADMIN_USER];
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(list));
@@ -3573,14 +3592,21 @@ export async function saveUser(user: UserRecord): Promise<void> {
     roles
   };
 
+  const isSavingAdmin = primaryRole === "admin" || roles.includes("admin");
+
   // 1. LocalStorage
   try {
     const raw = localStorage.getItem(USERS_STORAGE_KEY);
-    const list: UserRecord[] = raw ? JSON.parse(raw) : [DEFAULT_ADMIN_USER];
-    if (!list.some((u) => u.role === "admin" || u.roles?.includes("admin"))) {
-      list.unshift(DEFAULT_ADMIN_USER);
+    let list: UserRecord[] = raw ? JSON.parse(raw) : [DEFAULT_ADMIN_USER];
+
+    // Si on enregistre un admin configuré distinct, retirer le placeholder par défaut
+    if (isSavingAdmin && userToSave.id !== "user-admin-default") {
+      list = list.filter((u) => u.id !== "user-admin-default");
     }
-    const idx = list.findIndex((u) => u.id === userToSave.id);
+
+    const idx = list.findIndex(
+      (u) => u.id === userToSave.id || (userToSave.username && u.username.toLowerCase() === userToSave.username.toLowerCase())
+    );
     if (idx >= 0) {
       list[idx] = userToSave;
     } else {
@@ -3593,6 +3619,12 @@ export async function saveUser(user: UserRecord): Promise<void> {
   const db = await getDatabase();
   if (db) {
     try {
+      if (isSavingAdmin && userToSave.id !== "user-admin-default") {
+        try {
+          await db.execute(`DELETE FROM users WHERE id = 'user-admin-default';`);
+        } catch {}
+      }
+
       await db.execute(
         `INSERT OR REPLACE INTO users (
           id, username, display_name, role, roles, pin_hash, pin_salt, is_active, created_at, last_login_at
@@ -3620,12 +3652,19 @@ export async function saveUser(user: UserRecord): Promise<void> {
 }
 
 /**
- * Supprime un utilisateur (interdit de supprimer le dernier admin)
+ * Supprime un utilisateur (interdit de supprimer le dernier admin restant)
  */
 export async function deleteUser(id: string): Promise<boolean> {
   const users = await getUsers();
   const target = users.find((u) => u.id === id);
-  if (!target || target.role === "admin" || target.roles?.includes("admin") || users.length <= 1) return false;
+  if (!target) return false;
+
+  const adminCount = users.filter((u) => u.role === "admin" || u.roles?.includes("admin")).length;
+  const isTargetAdmin = target.role === "admin" || target.roles?.includes("admin");
+
+  // Interdit de supprimer le dernier administrateur du système
+  if (isTargetAdmin && adminCount <= 1) return false;
+  if (users.length <= 1) return false;
 
   // LocalStorage
   try {

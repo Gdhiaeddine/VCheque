@@ -249,10 +249,13 @@ export const InitialSetupWizard: React.FC<InitialSetupWizardProps> = ({
 
           {/* Corps de l'étape */}
           <div className="setup-step-body">
+            {/* Toast d'alerte centré au milieu */}
             {errorMsg && (
-              <div className="app-toast toast-warning" style={{ position: "relative", marginBottom: "16px" }}>
-                <AlertCircle size={15} />
-                <span>{errorMsg}</span>
+              <div className="setup-toast-wrapper">
+                <div className="app-toast toast-warning setup-toast-centered">
+                  <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                  <span>{errorMsg}</span>
+                </div>
               </div>
             )}
 
@@ -318,11 +321,24 @@ export const InitialSetupWizard: React.FC<InitialSetupWizardProps> = ({
                   </div>
                 </div>
 
-                {/* Option box harmonisée */}
-                <div
+                {/* Option box harmonisée avec Checkbox visible */}
+                <label
                   className={`setup-option-box ${autoBackupEnabled ? "selected" : ""}`}
-                  onClick={() => setAutoBackupEnabled((prev) => !prev)}
+                  style={{ cursor: "pointer", display: "flex", alignItems: "flex-start", gap: "12px" }}
                 >
+                  <div className="setup-checkbox-wrapper">
+                    <input
+                      type="checkbox"
+                      className="setup-checkbox-input"
+                      checked={autoBackupEnabled}
+                      onChange={(e) => setAutoBackupEnabled(e.target.checked)}
+                      aria-label="Activer les sauvegardes automatiques certifiées"
+                    />
+                    <div className={`setup-custom-checkbox ${autoBackupEnabled ? "checked" : ""}`}>
+                      {autoBackupEnabled && <Check size={13} strokeWidth={3} className="setup-check-icon" />}
+                    </div>
+                  </div>
+
                   <div className="setup-option-icon">
                     <Clock size={16} />
                   </div>
@@ -334,12 +350,16 @@ export const InitialSetupWizard: React.FC<InitialSetupWizardProps> = ({
                       Génère périodiquement des archives scellées avec empreinte SHA-256 pour sécuriser l'historique de vos chèques et modèles.
                     </div>
                   </div>
-                  {autoBackupEnabled && (
+                  {autoBackupEnabled ? (
                     <span className="active-session-pill" style={{ marginLeft: "8px" }}>
                       <Check size={11} strokeWidth={3} /> Activé
                     </span>
+                  ) : (
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)", marginLeft: "8px", fontWeight: 600 }}>
+                      Désactivé
+                    </span>
                   )}
-                </div>
+                </label>
               </div>
             )}
 
@@ -568,11 +588,24 @@ export const InitialSetupWizard: React.FC<InitialSetupWizardProps> = ({
                   </div>
                 </div>
 
-                {/* Option box PIN au démarrage */}
-                <div
+                {/* Option box PIN au démarrage avec Checkbox visible */}
+                <label
                   className={`setup-option-box ${requirePinOnStartup ? "selected" : ""}`}
-                  onClick={() => setRequirePinOnStartup((prev) => !prev)}
+                  style={{ cursor: "pointer", display: "flex", alignItems: "flex-start", gap: "12px" }}
                 >
+                  <div className="setup-checkbox-wrapper">
+                    <input
+                      type="checkbox"
+                      className="setup-checkbox-input"
+                      checked={requirePinOnStartup}
+                      onChange={(e) => setRequirePinOnStartup(e.target.checked)}
+                      aria-label="Exiger l'authentification par code PIN au lancement"
+                    />
+                    <div className={`setup-custom-checkbox ${requirePinOnStartup ? "checked" : ""}`}>
+                      {requirePinOnStartup && <Check size={13} strokeWidth={3} className="setup-check-icon" />}
+                    </div>
+                  </div>
+
                   <div className="setup-option-icon">
                     <Lock size={16} />
                   </div>
@@ -584,12 +617,16 @@ export const InitialSetupWizard: React.FC<InitialSetupWizardProps> = ({
                       Verrouille immédiatement l'accès au logiciel pour protéger vos formules de chèques et comptes bancaires contre toute utilisation non autorisée.
                     </div>
                   </div>
-                  {requirePinOnStartup && (
+                  {requirePinOnStartup ? (
                     <span className="active-session-pill" style={{ marginLeft: "8px" }}>
                       <Check size={11} strokeWidth={3} /> Protégé
                     </span>
+                  ) : (
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)", marginLeft: "8px", fontWeight: 600 }}>
+                      Accès direct
+                    </span>
                   )}
-                </div>
+                </label>
               </div>
             )}
 
