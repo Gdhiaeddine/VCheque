@@ -14,6 +14,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   numericCurrencySuffix: "none",
   decimalSeparator: "comma",
 
+  // Paramètres régionaux & Dates
+  dateFormat: "DD/MM/YYYY",
+
   // Valeurs par défaut du formulaire
   defaultPlace: "Alger",
   defaultIsCrossed: true,

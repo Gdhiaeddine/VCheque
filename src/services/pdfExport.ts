@@ -1,7 +1,8 @@
 import { jsPDF } from "jspdf";
 import { invoke } from "@tauri-apps/api/core";
-import type { BankTemplate, PrintSettings } from "../types";
+import type { BankTemplate, PrintSettings, DateFormat } from "../types";
 import { splitWordsByLimit } from "../moneyToWords";
+import { formatChequeDate } from "./dateFormat";
 import { getPaperDimensions, calculateChequePosition } from "../components/PrintModal";
 
 export interface ExportPdfOptions {
@@ -13,6 +14,7 @@ export interface ExportPdfOptions {
   beneficiary: string;
   place: string;
   date: string;
+  dateFormat?: DateFormat;
   isCrossed?: boolean;
   crossedWithText?: boolean;
   showChequeNumber?: boolean;
@@ -97,6 +99,7 @@ export async function exportChequeToPdf(options: ExportPdfOptions): Promise<Expo
     beneficiary,
     place,
     date,
+    dateFormat,
     isCrossed = true,
     crossedWithText = true,
     showChequeNumber = false,
@@ -250,10 +253,10 @@ export async function exportChequeToPdf(options: ExportPdfOptions): Promise<Expo
     });
   }
 
-  // 8. Date (Format JJ/MM/AAAA)
+  // 8. Date (Format sélectionné dans les paramètres)
   if (date && template.positions.date) {
     const pos = template.positions.date;
-    const formattedDate = date.includes("-") ? date.split("-").reverse().join("/") : date;
+    const formattedDate = formatChequeDate(date, dateFormat);
     doc.setFontSize(mmToPt(pos.size));
     doc.text(formattedDate, originX + pos.x, originY + pos.y, {
       align: pos.align || "left",

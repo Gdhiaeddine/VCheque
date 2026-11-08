@@ -314,6 +314,13 @@ export type NumericSecuritySymbol = "hash" | "star" | "dash" | "none";
 export type NumericCurrencySuffix = "none" | "da" | "dzd";
 export type DecimalSeparator = "comma" | "dot";
 
+export type DateFormat =
+  | "DD/MM/YYYY"
+  | "DD.MM.YYYY"
+  | "DD-MM-YYYY"
+  | "DD_MONTH_YYYY"
+  | "YYYY-MM-DD";
+
 export interface AppSettings {
   // Montant en lettres
   letterCase: LetterCase;
@@ -325,6 +332,9 @@ export interface AppSettings {
   numericSecuritySymbol: NumericSecuritySymbol;
   numericCurrencySuffix: NumericCurrencySuffix;
   decimalSeparator: DecimalSeparator;
+
+  // Paramètres régionaux & Dates
+  dateFormat?: DateFormat;
 
   // Préférences par défaut
   defaultPlace: string;

@@ -26,8 +26,9 @@ import {
   Check,
   Compass
 } from "lucide-react";
-import type { BankTemplate, PrintSettings, PrintPlacement, PrintPaperFormat, PrinterPreset } from "../types";
+import type { BankTemplate, PrintSettings, PrintPlacement, PrintPaperFormat, PrinterPreset, DateFormat } from "../types";
 import { loadPrinterPresets, upsertPrinterPreset, presetToPrintSettings } from "../services/printerPresets";
+import { formatChequeDate } from "../services/dateFormat";
 import { PrinterInsertionGuideModal } from "./PrinterInsertionGuideModal";
 
 export interface PrintModalProps {
@@ -41,6 +42,7 @@ export interface PrintModalProps {
   amount: string;
   beneficiary: string;
   date: string;
+  dateFormat?: DateFormat;
   isCrossed?: boolean;
   crossedWithText?: boolean;
   showChequeNumber?: boolean;
@@ -166,6 +168,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
   amount,
   beneficiary,
   date,
+  dateFormat = "DD/MM/YYYY",
   isCrossed = true,
   crossedWithText = true,
   showChequeNumber = false,
@@ -891,7 +894,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                         </div>
                         <div className="mini-text-line date">
                           <span className="mini-label">Le :</span>
-                          <span className="mini-val">{date || "jj/mm/aaaa"}</span>
+                          <span className="mini-val">{formatChequeDate(date, dateFormat) || "jj/mm/aaaa"}</span>
                         </div>
                       </div>
 
@@ -961,7 +964,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
                     </div>
                     <div className="zoom-footer-row">
                       <span>Lieu : <strong>Alger</strong></span>
-                      <span>Date : <strong>{date || "Non renseignée"}</strong></span>
+                      <span>Date : <strong>{formatChequeDate(date, dateFormat) || "Non renseignée"}</strong></span>
                     </div>
                   </div>
                 </div>

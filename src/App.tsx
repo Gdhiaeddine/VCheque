@@ -834,6 +834,7 @@ export default function App() {
         beneficiary: beneficiary.trim() || "Bénéficiaire",
         place: place.trim() || "Alger",
         date: date || new Date().toISOString().split("T")[0],
+        dateFormat: appSettings.dateFormat,
         isCrossed,
         crossedWithText,
         showChequeNumber,
@@ -1717,6 +1718,7 @@ export default function App() {
                   beneficiary={beneficiary}
                   place={place}
                   date={date}
+                  dateFormat={appSettings.dateFormat}
                   isCrossed={isCrossed}
                   crossedWithText={crossedWithText}
                   showChequeNumber={showChequeNumber}
@@ -1892,6 +1894,7 @@ export default function App() {
         amount={amount}
         beneficiary={beneficiary}
         date={date}
+        dateFormat={appSettings.dateFormat}
         isCrossed={isCrossed}
         crossedWithText={crossedWithText}
         showChequeNumber={showChequeNumber}

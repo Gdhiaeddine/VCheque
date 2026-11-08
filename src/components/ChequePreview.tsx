@@ -1,7 +1,8 @@
 import React, { type CSSProperties, type PointerEvent as ReactPointerEvent, useRef } from "react";
 import { FileText, ZoomIn, ZoomOut, Move, Eye } from "lucide-react";
-import type { BankTemplate, FieldKey } from "../types";
+import type { BankTemplate, FieldKey, DateFormat } from "../types";
 import { splitWordsByLimit } from "../moneyToWords";
+import { formatChequeDate } from "../services/dateFormat";
 
 interface ChequePreviewProps {
   currentTemplate: BankTemplate;
@@ -15,6 +16,7 @@ interface ChequePreviewProps {
   showChequeNumber?: boolean;
   chequeNumber?: string;
   formattedNumeric?: string;
+  dateFormat?: DateFormat;
   activeField: FieldKey | null;
   onSelectField: (key: FieldKey | null) => void;
   onUpdateFieldPosition: (key: FieldKey, patch: { x?: number; y?: number }) => void;
@@ -36,6 +38,7 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
   showChequeNumber = false,
   chequeNumber,
   formattedNumeric,
+  dateFormat = "DD/MM/YYYY",
   activeField,
   onSelectField,
   onUpdateFieldPosition,
@@ -50,13 +53,8 @@ export const ChequePreview: React.FC<ChequePreviewProps> = ({
 
   // Formatted date for display
   const formattedDate = React.useMemo(() => {
-    if (!date) return "";
-    const parts = date.split("-");
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    return date;
-  }, [date]);
+    return formatChequeDate(date, dateFormat);
+  }, [date, dateFormat]);
 
   // Formatted numeric amount
   const formattedAmount = formattedNumeric !== undefined ? formattedNumeric : React.useMemo(() => {

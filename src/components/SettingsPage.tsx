@@ -47,8 +47,10 @@ import type {
   DecimalSeparator,
   SecuritySettings,
   UserRecord,
-  PrinterPreset
+  PrinterPreset,
+  DateFormat
 } from "../types";
+import { formatChequeDate, DATE_FORMAT_OPTIONS } from "../services/dateFormat";
 import { amountInFrenchWords, formatNumericAmount } from "../moneyToWords";
 import { exportFullBackup } from "../services/appSettings";
 import { getConfigFilePath, openConfigFileFolder } from "../services/templatesConfig";
@@ -358,7 +360,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
           <div className="mock-cheque-bottom">
             <span>Fait à : <strong>{settings.defaultPlace || "Alger"}</strong></span>
-            <span>Date : <strong>19/10/2026</strong></span>
+            <span>Date : <strong>{formatChequeDate(new Date(), settings.dateFormat)}</strong></span>
           </div>
         </div>
       </div>
@@ -879,6 +881,93 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   </span>
                 </div>
               </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Section C.2 : Paramètres Régionaux & Format de Date */}
+        <div className="settings-card">
+          <div className="settings-card-header">
+            <div className="section-title-group">
+              <Calendar size={18} className="section-icon" />
+              <div>
+                <h2 className="section-title">Paramètres Régionaux & Format de Date</h2>
+                <span className="section-desc">Format d'affichage et d'impression des dates sur le chèque</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-card-body">
+            <div className="setting-row">
+              <label className="setting-label">Style de date appliqué aux chèques :</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "6px" }}>
+                {DATE_FORMAT_OPTIONS.map((opt) => {
+                  const isSelected = (settings.dateFormat || "DD/MM/YYYY") === opt.id;
+                  const liveFormatted = formatChequeDate(new Date(), opt.id);
+                  return (
+                    <div
+                      key={opt.id}
+                      onClick={() => updateSetting("dateFormat", opt.id)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "10px 14px",
+                        borderRadius: "8px",
+                        border: isSelected ? "1.5px solid var(--accent, #d4af37)" : "1px solid var(--border-color, rgba(255,255,255,0.08))",
+                        backgroundColor: isSelected ? "rgba(212, 175, 55, 0.08)" : "var(--bg-secondary, rgba(255,255,255,0.02))",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontWeight: 600, fontSize: "13px", color: isSelected ? "var(--text-primary, #fff)" : "var(--text-secondary, #ccc)" }}>
+                            {opt.label}
+                          </span>
+                          {opt.isRecommended && (
+                            <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", backgroundColor: "rgba(34, 197, 94, 0.2)", color: "#4ade80", fontWeight: 600 }}>
+                              Recommandé Algérie
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: "11px", color: "var(--text-muted, #888)" }}>
+                          {opt.description}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <span style={{
+                          fontFamily: "monospace",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          backgroundColor: isSelected ? "rgba(212, 175, 55, 0.2)" : "rgba(255,255,255,0.05)",
+                          color: isSelected ? "var(--accent, #d4af37)" : "var(--text-secondary, #aaa)",
+                          letterSpacing: "0.5px"
+                        }}>
+                          {liveFormatted}
+                        </span>
+                        <div style={{
+                          width: "18px",
+                          height: "18px",
+                          borderRadius: "50%",
+                          border: isSelected ? "2px solid #d4af37" : "2px solid #555",
+                          backgroundColor: isSelected ? "#d4af37" : "transparent",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center"
+                        }}>
+                          {isSelected && <Check size={12} color="#000" strokeWidth={3} />}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <small className="setting-hint" style={{ marginTop: "8px", display: "block" }}>
+                Ce format est immédiatement synchronisé avec le canevas du chèque, l'export PDF haute fidélité et l'impression physique.
+              </small>
             </div>
           </div>
         </div>
