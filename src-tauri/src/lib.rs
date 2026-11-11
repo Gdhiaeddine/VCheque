@@ -138,7 +138,30 @@ fn save_pdf_dialog(default_filename: String, bytes: Vec<u8>) -> Result<Option<St
 fn save_pdf_to_downloads(app: tauri::AppHandle, filename: String, bytes: Vec<u8>) -> Result<String, String> {
     let download_dir = app.path().download_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&download_dir).map_err(|e| e.to_string())?;
-    let file_path = download_dir.join(&filename);
+
+    // Durcissement de sécurité (SEC-CS-001) : extraction stricte du nom de fichier sans composant de chemin
+    let raw_name = std::path::Path::new(&filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Nom de fichier invalide".to_string())?;
+
+    let trimmed = raw_name.trim();
+    if trimmed.is_empty()
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains("..")
+        || trimmed.starts_with('.')
+    {
+        return Err("Nom de fichier non sécurisé ou contenant des caractères interdits".to_string());
+    }
+
+    let safe_filename = if trimmed.to_lowercase().ends_with(".pdf") {
+        trimmed.to_string()
+    } else {
+        format!("{}.pdf", trimmed)
+    };
+
+    let file_path = download_dir.join(&safe_filename);
     fs::write(&file_path, &bytes).map_err(|e| e.to_string())?;
     let path_str = file_path.to_string_lossy().to_string();
 
@@ -177,15 +200,26 @@ fn get_app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 fn open_folder_path(folder_path: String) -> Result<(), String> {
+    let trimmed = folder_path.trim();
+
+    // Durcissement de sécurité (SEC-CS-002) : interdire les chemins UNC ou protocoles distants
+    if trimmed.starts_with(r"\\") || trimmed.starts_with("//") || trimmed.contains("://") {
+        return Err("Accès aux chemins réseau ou distants refusé pour des raisons de sécurité.".into());
+    }
+
+    use std::path::Path;
+    let p = Path::new(trimmed);
+    if !p.is_absolute() {
+        return Err("Le chemin doit être un chemin absolu local valide.".into());
+    }
+
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
-        use std::path::Path;
-        let p = Path::new(&folder_path);
         if !p.exists() {
             let _ = fs::create_dir_all(p);
         }
-        let _ = Command::new("explorer").arg(&folder_path).spawn();
+        let _ = Command::new("explorer").arg(p.as_os_str()).spawn();
     }
     Ok(())
 }

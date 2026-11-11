@@ -674,6 +674,7 @@ export const ChequeAttachmentModal: React.FC<ChequeAttachmentModalProps> = ({
                       src={previewAttachment.dataBase64}
                       title={previewAttachment.fileName}
                       className="preview-iframe"
+                      sandbox="allow-popups"
                     />
                   ) : (
                     <img
@@ -804,6 +805,7 @@ export const ChequeAttachmentModal: React.FC<ChequeAttachmentModalProps> = ({
                 src={previewAttachment.dataBase64}
                 title={previewAttachment.fileName}
                 className="fullscreen-iframe"
+                sandbox="allow-popups"
               />
             ) : (
               <img
